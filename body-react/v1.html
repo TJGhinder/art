@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Reactive Motion Shader v0.1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .app {
+      width: 100%;
+      max-width: 900px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .header {
+      text-align: center;
+      max-width: 680px;
+    }
+    .header h1 {
+      font-size: 1.1rem;
+      margin: 0 0 4px;
+      font-weight: 600;
+    }
+    .header p {
+      font-size: 0.75rem;
+      margin: 0;
+      opacity: 0.7;
+    }
+    .status {
+      font-size: 0.7rem;
+      opacity: 0.7;
+    }
+    .canvas-wrapper {
+      width: 100%;
+      max-width: 640px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      position: relative;
+    }
+    .canvas-inner {
+      position: relative;
+      width: 100%;
+      padding-top: 100%; /* square */
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .controls {
+      width: 100%;
+      max-width: 640px;
+      margin-top: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 0.75rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 8px;
+    }
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-right: 12px;
+    }
+    .control-value {
+      font-variant-numeric: tabular-nums;
+    }
+    .control-slider {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+    }
+    .control-slider input[type="range"] {
+      width: 80%;
+    }
+
+    .controls::-webkit-scrollbar {
+      width: 6px;
+    }
+    .controls::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .controls::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 999px;
+    }
+
+    #cam {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <h1>Reactive Motion Shader v0.1</h1>
+      <p>
+        Simple proof of concept: move in front of the camera and watch neon
+        motion ghosts bloom where you move.
+      </p>
+      <div class="status" id="camStatus">Camera: requesting access…</div>
+    </div>
+
+    <!-- Hidden webcam video -->
+    <video id="cam" autoplay playsinline muted></video>
+
+    <div class="canvas-wrapper">
+      <div class="canvas-inner">
+        <canvas id="motionCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <div class="control-label">
+          <span>Color Speed</span>
+          <span class="control-value" id="colorSpeedValue">0.50</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorSpeed"
+            type="range"
+            min="0.0"
+            max="2.0"
+            step="0.01"
+          />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Hue Min (°)</span>
+          <span class="control-value" id="colorMinValue">0</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorMin"
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+          />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Hue Max (°)</span>
+          <span class="control-value" id="colorMaxValue">360</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorMax"
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+          />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Motion Intensity</span>
+          <span class="control-value" id="motionIntensityValue">1.00</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="motionIntensity"
+            type="range"
+            min="0.1"
+            max="3.0"
+            step="0.01"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const vertexShaderSource = `
+      attribute vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    const fragmentShaderSource = `
+      #ifdef GL_ES
+      precision highp float;
+      #endif
+
+      uniform vec2  u_resolution;
+      uniform float u_time;
+      uniform float u_colorMin;
+      uniform float u_colorMax;
+      uniform float u_colorSpeed;
+      uniform float u_motionIntensity;
+
+      uniform sampler2D u_camera;
+      uniform sampler2D u_motion;
+
+      // HSV to RGB
+      vec3 hsv2rgb(vec3 c) {
+        vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+        vec3 p = abs(fract(c.xxx + K.yzw) * 6.0 - K.www);
+        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+      }
+
+      void main() {
+        vec2 frag = gl_FragCoord.xy;
+        vec2 uv01 = frag / u_resolution.xy;
+        uv01.y = 1.0 - uv01.y; // match video orientation
+
+        // Camera background (very faint, grayscale)
+        vec3 cam = texture2D(u_camera, uv01).rgb;
+        float lum = dot(cam, vec3(0.299, 0.587, 0.114));
+        vec3 bg = vec3(lum * 0.1);
+
+        // Motion texture (0..1), blur a bit by sampling neighbors
+        float m0 = texture2D(u_motion, uv01).r;
+        float m1 = texture2D(u_motion, uv01 + vec2( 1.0/u_resolution.x, 0.0)).r;
+        float m2 = texture2D(u_motion, uv01 + vec2(-1.0/u_resolution.x, 0.0)).r;
+        float m3 = texture2D(u_motion, uv01 + vec2(0.0,  1.0/u_resolution.y)).r;
+        float m4 = texture2D(u_motion, uv01 + vec2(0.0, -1.0/u_resolution.y)).r;
+        float motion = (m0 + m1 + m2 + m3 + m4) / 5.0;
+
+        // Soften and scale motion; sharper threshold gives crisper outlines
+        float base = smoothstep(0.05, 0.4, motion);
+        float intensity = base * u_motionIntensity;
+
+        // Hue range control
+        float hueMin = u_colorMin / 360.0;
+        float hueMax = u_colorMax / 360.0;
+
+        // Time + motion-based hue
+        float t = u_time * u_colorSpeed;
+        float hNorm = fract(t + motion * 2.5); // 0..1
+        float h = mix(hueMin, hueMax, hNorm);
+
+        // Neon color at motion areas
+        vec3 neon = hsv2rgb(vec3(h, 1.0, intensity));
+
+        // Slight halo effect by squaring intensity
+        neon *= (0.4 + intensity * intensity * 1.5);
+
+        vec3 col = bg + neon;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    function compileShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      if (!shader) return null;
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error("Shader compile error:", gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vsSource, fsSource) {
+      const vs = compileShader(gl, gl.VERTEX_SHADER, vsSource);
+      const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSource);
+      if (!vs || !fs) return null;
+
+      const program = gl.createProgram();
+      if (!program) return null;
+
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error("Program link error", gl.getProgramInfoLog(program));
+        gl.deleteProgram(program);
+        return null;
+      }
+      return program;
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const canvas = document.getElementById("motionCanvas");
+      const video = document.getElementById("cam");
+      const camStatus = document.getElementById("camStatus");
+      const gl = canvas.getContext("webgl");
+
+      if (!gl) {
+        alert("WebGL not supported in this browser.");
+        return;
+      }
+
+      // --- Camera setup ---
+      navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then((stream) => {
+          video.srcObject = stream;
+          return video.play();
+        })
+        .then(() => {
+          camStatus.textContent = "Camera: on (move to draw neon ghosts)";
+        })
+        .catch((err) => {
+          console.error("Camera error", err);
+          camStatus.textContent = "Camera error: " + err.message;
+        });
+
+      // --- WebGL program ---
+      const program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+      if (!program) {
+        alert("Failed to create WebGL program.");
+        return;
+      }
+
+      gl.useProgram(program);
+
+      const positionLocation = gl.getAttribLocation(program, "a_position");
+      const timeLocation = gl.getUniformLocation(program, "u_time");
+      const resLocation = gl.getUniformLocation(program, "u_resolution");
+      const colorMinLoc = gl.getUniformLocation(program, "u_colorMin");
+      const colorMaxLoc = gl.getUniformLocation(program, "u_colorMax");
+      const colorSpeedLoc = gl.getUniformLocation(program, "u_colorSpeed");
+      const motionIntensityLoc = gl.getUniformLocation(program, "u_motionIntensity");
+      const uCameraLoc = gl.getUniformLocation(program, "u_camera");
+      const uMotionLoc = gl.getUniformLocation(program, "u_motion");
+
+      // Full-screen quad
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      const vertices = new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1
+      ]);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(positionLocation);
+      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+      // --- Textures ---
+      // Camera texture (unit 0)
+      const cameraTexture = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, cameraTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.uniform1i(uCameraLoc, 0);
+
+      // Motion texture (unit 1)
+      const motionTexture = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, motionTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.uniform1i(uMotionLoc, 1);
+
+      // Offscreen canvas for motion detection
+      const motionCanvas = document.createElement("canvas");
+      motionCanvas.width = 160;
+      motionCanvas.height = 90;
+      const motionCtx = motionCanvas.getContext("2d");
+      let prevFrameData = null;
+
+      function updateCameraTexture() {
+        if (video.readyState < 2) return;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, cameraTexture);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          video
+        );
+      }
+
+      function updateMotionTexture() {
+        if (video.readyState < 2) return;
+
+        motionCtx.drawImage(
+          video,
+          0,
+          0,
+          motionCanvas.width,
+          motionCanvas.height
+        );
+
+        const frame = motionCtx.getImageData(
+          0,
+          0,
+          motionCanvas.width,
+          motionCanvas.height
+        );
+
+        const data = frame.data;
+        const motionData = new Uint8Array(data.length);
+
+        if (prevFrameData) {
+          for (let i = 0; i < data.length; i += 4) {
+            const dr = data[i]   - prevFrameData[i];
+            const dg = data[i+1] - prevFrameData[i+1];
+            const db = data[i+2] - prevFrameData[i+2];
+            const diff = Math.sqrt(dr*dr + dg*dg + db*db);
+
+            let v = diff > 20 ? diff * 3 : 0; // threshold + scale
+            if (v > 255) v = 255;
+            motionData[i]   = v;
+            motionData[i+1] = v;
+            motionData[i+2] = v;
+            motionData[i+3] = 255;
+          }
+        } else {
+          for (let i = 0; i < data.length; i += 4) {
+            motionData[i]   = 0;
+            motionData[i+1] = 0;
+            motionData[i+2] = 0;
+            motionData[i+3] = 255;
+          }
+        }
+
+        prevFrameData = new Uint8ClampedArray(data);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, motionTexture);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          motionCanvas.width,
+          motionCanvas.height,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          motionData
+        );
+      }
+
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      const params = {
+        colorMin: 0.0,
+        colorMax: 360.0,
+        colorSpeed: 0.5,
+        motionIntensity: 1.0
+      };
+
+      const start = performance.now();
+
+      function render() {
+        const now = performance.now();
+        const t = (now - start) / 1000;
+
+        updateCameraTexture();
+        updateMotionTexture();
+
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.uniform1f(timeLocation, t);
+        gl.uniform2f(resLocation, canvas.width, canvas.height);
+        gl.uniform1f(colorMinLoc, params.colorMin);
+        gl.uniform1f(colorMaxLoc, params.colorMax);
+        gl.uniform1f(colorSpeedLoc, params.colorSpeed);
+        gl.uniform1f(motionIntensityLoc, params.motionIntensity);
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        requestAnimationFrame(render);
+      }
+
+      requestAnimationFrame(render);
+
+      function bindSlider(id, paramKey, valueId, formatter) {
+        const input = document.getElementById(id);
+        const valueSpan = document.getElementById(valueId);
+        if (!input || !valueSpan) return;
+
+        input.value = params[paramKey].toString();
+        valueSpan.textContent = formatter(params[paramKey]);
+
+        input.addEventListener("input", (e) => {
+          const v = parseFloat(e.target.value);
+          params[paramKey] = v;
+          valueSpan.textContent = formatter(v);
+        });
+      }
+
+      bindSlider("colorSpeed", "colorSpeed", "colorSpeedValue", v => v.toFixed(2));
+      bindSlider("colorMin", "colorMin", "colorMinValue", v => v.toFixed(0));
+      bindSlider("colorMax", "colorMax", "colorMaxValue", v => v.toFixed(0));
+      bindSlider("motionIntensity", "motionIntensity", "motionIntensityValue", v => v.toFixed(2));
+    });
+  </script>
+</body>
+</html>

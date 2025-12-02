@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kaleidoscope Shader Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .app {
+      width: 100%;
+      max-width: 900px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .header {
+      text-align: center;
+      max-width: 680px;
+    }
+    .header h1 {
+      font-size: 1.1rem;
+      margin: 0 0 4px;
+      font-weight: 600;
+    }
+    .header p {
+      font-size: 0.75rem;
+      margin: 0;
+      opacity: 0.7;
+    }
+    .canvas-wrapper {
+      width: 100%;
+      max-width: 640px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      position: relative;
+    }
+    /* Maintain a square aspect ratio */
+    .canvas-inner {
+      position: relative;
+      width: 100%;
+      padding-top: 100%;
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .controls {
+      width: 100%;
+      max-width: 640px;
+      margin-top: 8px;
+      max-height: 260px;
+      overflow-y: auto;
+      font-size: 0.75rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 8px;
+    }
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-right: 12px;
+    }
+    .control-value {
+      font-variant-numeric: tabular-nums;
+    }
+    .control-slider {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+    }
+    .control-slider input[type="range"] {
+      width: 80%;
+    }
+
+    /* Scrollbar styling (nice but optional) */
+    .controls::-webkit-scrollbar {
+      width: 6px;
+    }
+    .controls::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .controls::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <h1>Kaleidoscope Shader Demo (Dynamic Thick Outlines + Color Range)</h1>
+      <p>
+        High-precision fragment shader with controllable rotation, reflections,
+        band density/width, dynamic outline thickness, animation speed, and a
+        configurable hue range.
+      </p>
+    </div>
+
+    <div class="canvas-wrapper">
+      <div class="canvas-inner">
+        <canvas id="kaleidoscope"></canvas>
+      </div>
+    </div>
+
+    <div class="controls">
+      <!-- Canvas Rotate Speed -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Canvas Rotate Speed</span>
+          <span class="control-value" id="canvasRotateSpeedValue">0.00</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="canvasRotateSpeed"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+          />
+        </div>
+      </div>
+
+      <!-- Reflect Rotate Speed -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Reflect Rotate Speed</span>
+          <span class="control-value" id="reflectRotateSpeedValue">0.00</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="reflectRotateSpeed"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+          />
+        </div>
+      </div>
+
+      <!-- Reflection Count -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Reflection Count</span>
+          <span class="control-value" id="reflectionCountValue">6</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="reflectionCount"
+            type="range"
+            min="0"
+            max="12"
+            step="1"
+          />
+        </div>
+      </div>
+
+      <!-- Color Band Count -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Color Band Threshold (Count)</span>
+          <span class="control-value" id="bandCountValue">5</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="bandCount"
+            type="range"
+            min="1"
+            max="30"
+            step="1"
+          />
+        </div>
+      </div>
+
+      <!-- Color Band Width -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Color Band Width</span>
+          <span class="control-value" id="colorBandWidthValue">3.00</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorBandWidth"
+            type="range"
+            min="0.3"
+            max="3"
+            step="0.01"
+          />
+        </div>
+      </div>
+
+      <!-- Edge Width -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Edge Width (Outline Strength)</span>
+          <span class="control-value" id="edgeWidthValue">1.00</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="edgeWidth"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+          />
+        </div>
+      </div>
+
+      <!-- Animate Speed -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Animate Speed</span>
+          <span class="control-value" id="animateSpeedValue">10.00x</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="animateSpeed"
+            type="range"
+            min="0.25"
+            max="30"
+            step="0.01"
+          />
+        </div>
+      </div>
+
+      <!-- Hue Min -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Hue Min (°)</span>
+          <span class="control-value" id="colorMinValue">0</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorMin"
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+          />
+        </div>
+      </div>
+
+      <!-- Hue Max -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Hue Max (°)</span>
+          <span class="control-value" id="colorMaxValue">360</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorMax"
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const vertexShaderSource = `
+      attribute vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    const fragmentShaderSource = `
+      #ifdef GL_ES
+      precision highp float;
+      #endif
+
+      uniform vec2  u_resolution;
+      uniform float u_time;
+      uniform float u_canvasRotateSpeed;
+      uniform float u_reflectRotateSpeed;
+      uniform float u_reflectionCount;
+      uniform float u_bandCount;
+      uniform float u_edgeWidth;
+      uniform float u_colorBandWidth;
+      uniform float u_animateSpeed;
+      uniform float u_colorMin;   // degrees [0, 360]
+      uniform float u_colorMax;   // degrees [0, 360]
+
+      mat2 rot(float a) {
+        float c = cos(a);
+        float s = sin(a);
+        return mat2(c, -s, s, c);
+      }
+
+      // Kaleidoscopic scalar field (with reflection)
+      void fieldWithReflect(vec2 uv, float t, out float vb, out float r) {
+        r = length(uv);
+        float a = atan(uv.y, uv.x);
+
+        // Rotating reflectors
+        float segments = max(u_reflectionCount, 1.0);
+        float sector   = 6.28318530718 / segments;
+
+        if (u_reflectionCount >= 0.5) {
+          float aa = a + t * u_reflectRotateSpeed;
+          aa = mod(aa, sector);
+          aa = abs(aa - sector * 0.5);
+          a  = aa;
+        }
+
+        float bands    = max(u_bandCount, 1.0);
+        float bandNorm = clamp(bands / 30.0, 0.0, 1.0);
+        float tShape   = t * (0.1 + 0.9 * bandNorm);
+
+        float warp = 0.3 * sin(3.0 * a + tShape * 0.8) +
+                     0.15 * sin(10.0 * r - tShape * 1.2);
+        r += warp * 0.1;
+
+        float petals = 6.0;
+        float flower = cos(a * petals + tShape * 0.7) +
+                       sin(r * 8.0 - tShape * 1.0);
+
+        float rings = sin(r * mix(8.0, 18.0, bandNorm) -
+                          tShape * mix(0.4, 1.6, bandNorm));
+
+        float v = flower + rings;
+
+        float bandCount = max(u_bandCount, 1.0);
+        float bandWidth = max(u_colorBandWidth, 0.1);
+        float bandScale = min(bandCount / bandWidth, 80.0);
+
+        float f  = (v + 2.5) * bandScale;
+        float bf = fract(f);
+
+        // Simple smoothing between bands
+        float blend = smoothstep(0.35, 0.65, bf);
+
+        float bi  = floor(f);
+        float vb0 = (bi / bandScale)         - 2.5 / bandWidth;
+        float vb1 = ((bi + 1.0) / bandScale) - 2.5 / bandWidth;
+        vb = mix(vb0, vb1, blend);
+      }
+
+      // Canonical HSV to RGB helper for explicit hue control (smooth, even hues)
+      vec3 hsv2rgb(vec3 c) {
+        // c.x = hue [0,1], c.y = saturation [0,1], c.z = value [0,1]
+        vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+        vec3 p = abs(fract(c.xxx + K.yzw) * 6.0 - K.www);
+        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+      }
+
+      // Color mapping with hue constrained to [u_colorMin, u_colorMax] degrees
+      vec3 colorFromBand(float vb, float r) {
+        // Map band value to 0..1, then into [hueMin, hueMax]
+        float hueMin = u_colorMin / 360.0;
+        float hueMax = u_colorMax / 360.0;
+
+        // Use vb as a repeating parameter to walk the range
+        float t = fract(vb * 0.3); // tweak 0.3 to control how fast hue cycles
+        float h = mix(hueMin, hueMax, t);
+
+        // Slightly under-full saturation/value so we don't blow to pure white
+        float s = 0.95;
+        float v = 0.95;
+        vec3 col = hsv2rgb(vec3(h, s, v));
+
+        // Radial fade-out
+        col *= smoothstep(1.3, 0.35, r);
+        return col;
+      }
+
+      // Full shading with dynamic thick outlines (Option C)
+      vec3 shade(vec2 uv, float t) {
+        float vbRef; float rRef;
+        fieldWithReflect(uv, t, vbRef, rRef);
+
+        // Pixel size in uv-space (y dimension)
+        float px = 1.0 / u_resolution.y;
+
+        // Option C: thicker outlines as we move outward
+        // rRef ~ 0 at center, ~1+ near edges
+        float thicknessBoost = smoothstep(0.3, 1.2, rRef);
+        // Base 1px → up to ~18px at max edgeWidth and far radius
+        float e = px * mix(1.0, 6.0 + thicknessBoost * 12.0, u_edgeWidth);
+
+        float vbRight; float rTmp;
+        float vbUp;    float rTmp2;
+        fieldWithReflect(uv + vec2(e, 0.0), t, vbRight, rTmp);
+        fieldWithReflect(uv + vec2(0.0,  e), t, vbUp,    rTmp2);
+
+        float g = max(abs(vbRef - vbRight), abs(vbRef - vbUp));
+
+        // Wider range → thicker visible edge band
+        float edgeBase = smoothstep(0.03, 0.33, g);
+
+        // Softer response so thickness ramps in nicely
+        float strength = pow(clamp(u_edgeWidth, 0.0, 1.0), 0.5);
+        float edge = edgeBase * strength;
+
+        vec3 col = colorFromBand(vbRef, rRef);
+        col = mix(col, vec3(0.0), edge);  // mix to black
+        return col;
+      }
+
+      void main() {
+        float t = u_time * 0.25 * u_animateSpeed;
+
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
+
+        if (u_canvasRotateSpeed != 0.0) {
+          uv = rot(t * u_canvasRotateSpeed) * uv;
+        }
+
+        vec3 col = shade(uv, t);
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    function compileShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      if (!shader) return null;
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error("Shader compile error:", gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vsSource, fsSource) {
+      const vs = compileShader(gl, gl.VERTEX_SHADER, vsSource);
+      const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSource);
+      if (!vs || !fs) return null;
+
+      const program = gl.createProgram();
+      if (!program) return null;
+
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error("Program link error", gl.getProgramInfoLog(program));
+        gl.deleteProgram(program);
+        return null;
+      }
+      return program;
+    }
+
+    window.addEventListener("DOMContentLoaded", function () {
+      const canvas = document.getElementById("kaleidoscope");
+      const gl = canvas.getContext("webgl");
+
+      if (!gl) {
+        alert("WebGL not supported in this browser.");
+        return;
+      }
+
+      const program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+      if (!program) {
+        alert("Failed to create WebGL program.");
+        return;
+      }
+
+      const positionLocation = gl.getAttribLocation(program, "a_position");
+      const timeLocation = gl.getUniformLocation(program, "u_time");
+      const resLocation = gl.getUniformLocation(program, "u_resolution");
+      const canvasRotLoc = gl.getUniformLocation(program, "u_canvasRotateSpeed");
+      const reflectRotLoc = gl.getUniformLocation(program, "u_reflectRotateSpeed");
+      const reflectionCountLoc = gl.getUniformLocation(program, "u_reflectionCount");
+      const bandCountLoc = gl.getUniformLocation(program, "u_bandCount");
+      const edgeWidthLoc = gl.getUniformLocation(program, "u_edgeWidth");
+      const colorBandWidthLoc = gl.getUniformLocation(program, "u_colorBandWidth");
+      const animateSpeedLoc = gl.getUniformLocation(program, "u_animateSpeed");
+      const colorMinLoc = gl.getUniformLocation(program, "u_colorMin");
+      const colorMaxLoc = gl.getUniformLocation(program, "u_colorMax");
+
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      const vertices = new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1
+      ]);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+      gl.useProgram(program);
+      gl.enableVertexAttribArray(positionLocation);
+      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+      const params = {
+        canvasRotateSpeed: 0.0,
+        reflectRotateSpeed: 0.0,
+        reflectionCount: 6.0,
+        bandCount: 5.0,
+        edgeWidth: 1.0,
+        colorBandWidth: 3.0,
+        animateSpeed: 10.0,
+        colorMin: 0.0,
+        colorMax: 360.0
+      };
+
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      const start = performance.now();
+
+      function render() {
+        const now = performance.now();
+        const t = (now - start) / 1000;
+
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.uniform1f(timeLocation, t);
+        gl.uniform2f(resLocation, canvas.width, canvas.height);
+        gl.uniform1f(canvasRotLoc, params.canvasRotateSpeed);
+        gl.uniform1f(reflectRotLoc, params.reflectRotateSpeed);
+        gl.uniform1f(reflectionCountLoc, params.reflectionCount);
+        gl.uniform1f(bandCountLoc, params.bandCount);
+        gl.uniform1f(edgeWidthLoc, params.edgeWidth);
+        gl.uniform1f(colorBandWidthLoc, params.colorBandWidth);
+        gl.uniform1f(animateSpeedLoc, params.animateSpeed);
+        gl.uniform1f(colorMinLoc, params.colorMin);
+        gl.uniform1f(colorMaxLoc, params.colorMax);
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        requestAnimationFrame(render);
+      }
+
+      requestAnimationFrame(render);
+
+      // Helper to wire a slider to a param + label
+      function bindSlider(id, paramKey, valueId, formatter) {
+        const input = document.getElementById(id);
+        const valueSpan = document.getElementById(valueId);
+        if (!input || !valueSpan) return;
+
+        // set initial value
+        input.value = params[paramKey].toString();
+        valueSpan.textContent = formatter(params[paramKey]);
+
+        input.addEventListener("input", function (e) {
+          const v = parseFloat(e.target.value);
+          params[paramKey] = v;
+          valueSpan.textContent = formatter(v);
+        });
+      }
+
+      bindSlider(
+        "canvasRotateSpeed",
+        "canvasRotateSpeed",
+        "canvasRotateSpeedValue",
+        (v) => v.toFixed(2)
+      );
+      bindSlider(
+        "reflectRotateSpeed",
+        "reflectRotateSpeed",
+        "reflectRotateSpeedValue",
+        (v) => v.toFixed(2)
+      );
+      bindSlider(
+        "reflectionCount",
+        "reflectionCount",
+        "reflectionCountValue",
+        (v) => v.toFixed(0)
+      );
+      bindSlider(
+        "bandCount",
+        "bandCount",
+        "bandCountValue",
+        (v) => v.toFixed(0)
+      );
+      bindSlider(
+        "colorBandWidth",
+        "colorBandWidth",
+        "colorBandWidthValue",
+        (v) => v.toFixed(2)
+      );
+      bindSlider(
+        "edgeWidth",
+        "edgeWidth",
+        "edgeWidthValue",
+        (v) => v.toFixed(2)
+      );
+      bindSlider(
+        "animateSpeed",
+        "animateSpeed",
+        "animateSpeedValue",
+        (v) => v.toFixed(2) + "x"
+      );
+      bindSlider(
+        "colorMin",
+        "colorMin",
+        "colorMinValue",
+        (v) => v.toFixed(0)
+      );
+      bindSlider(
+        "colorMax",
+        "colorMax",
+        "colorMaxValue",
+        (v) => v.toFixed(0)
+      );
+    });
+  </script>
+</body>
+</html>

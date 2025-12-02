@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Reactive Motion Echo Shader v0.2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .app {
+      width: 100%;
+      max-width: 900px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .header {
+      text-align: center;
+      max-width: 680px;
+    }
+    .header h1 {
+      font-size: 1.1rem;
+      margin: 0 0 4px;
+      font-weight: 600;
+    }
+    .header p {
+      font-size: 0.75rem;
+      margin: 0;
+      opacity: 0.7;
+    }
+    .status {
+      font-size: 0.7rem;
+      opacity: 0.7;
+    }
+    .canvas-wrapper {
+      width: 100%;
+      max-width: 640px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      position: relative;
+    }
+    .canvas-inner {
+      position: relative;
+      width: 100%;
+      padding-top: 100%; /* square */
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .controls {
+      width: 100%;
+      max-width: 640px;
+      margin-top: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+      font-size: 0.75rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 8px;
+    }
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-right: 12px;
+    }
+    .control-value {
+      font-variant-numeric: tabular-nums;
+    }
+    .control-slider {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+    }
+    .control-slider input[type="range"] {
+      width: 80%;
+    }
+
+    .controls::-webkit-scrollbar {
+      width: 6px;
+    }
+    .controls::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .controls::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 999px;
+    }
+
+    #cam {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <h1>Reactive Motion Echo Shader v0.2</h1>
+      <p>
+        Motion injects energy into a drifting neon field. Swipe your arm and
+        watch the colors keep moving in that direction.
+      </p>
+      <div class="status" id="camStatus">Camera: requesting access…</div>
+    </div>
+
+    <!-- Hidden webcam video -->
+    <video id="cam" autoplay playsinline muted></video>
+
+    <div class="canvas-wrapper">
+      <div class="canvas-inner">
+        <canvas id="motionCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <div class="control-label">
+          <span>Color Speed</span>
+          <span class="control-value" id="colorSpeedValue">0.50</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorSpeed"
+            type="range"
+            min="0.0"
+            max="2.0"
+            step="0.01"
+          />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Hue Min (°)</span>
+          <span class="control-value" id="colorMinValue">0</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorMin"
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+          />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Hue Max (°)</span>
+          <span class="control-value" id="colorMaxValue">360</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="colorMax"
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+          />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Motion Intensity</span>
+          <span class="control-value" id="motionIntensityValue">1.00</span>
+        </div>
+        <div class="control-slider">
+          <input
+            id="motionIntensity"
+            type="range"
+            min="0.1"
+            max="3.0"
+            step="0.01"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Shared vertex shader (full-screen quad)
+    const vertexShaderSource = `
+      attribute vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    // Fragment shader for FINAL DISPLAY (camera + trail -> neon echo)
+    const displayFragmentShaderSource = `
+      #ifdef GL_ES
+      precision highp float;
+      #endif
+
+      uniform vec2  u_resolution;
+      uniform float u_time;
+      uniform float u_colorMin;
+      uniform float u_colorMax;
+      uniform float u_colorSpeed;
+      uniform float u_motionIntensity;
+
+      uniform sampler2D u_camera;
+      uniform sampler2D u_trail;
+
+      vec3 hsv2rgb(vec3 c) {
+        vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+        vec3 p = abs(fract(c.xxx + K.yzw) * 6.0 - K.www);
+        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+      }
+
+      void main() {
+        vec2 frag = gl_FragCoord.xy;
+        vec2 uv01 = frag / u_resolution.xy;
+        uv01.y = 1.0 - uv01.y; // match video orientation
+
+        // Camera background (subtle, grayscale)
+        vec3 cam = texture2D(u_camera, uv01).rgb;
+        float lum = dot(cam, vec3(0.299, 0.587, 0.114));
+        vec3 bg = vec3(lum * 0.10);
+
+        // Trail buffer: persistent energy from past motion
+        float trail = texture2D(u_trail, uv01).r;
+
+        // Shape the intensity
+        float intensity = smoothstep(0.02, 0.8, trail) * u_motionIntensity;
+
+        // Hue range
+        float hueMin = u_colorMin / 360.0;
+        float hueMax = u_colorMax / 360.0;
+
+        float t = u_time * u_colorSpeed;
+        float hNorm = fract(t + trail * 2.0); // motion energy modulates hue
+        float h = mix(hueMin, hueMax, hNorm);
+
+        vec3 neon = hsv2rgb(vec3(h, 1.0, intensity));
+        neon *= (0.4 + intensity * intensity * 1.3);
+
+        vec3 col = bg + neon;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    // Fragment shader for TRAIL UPDATE (feedback buffer)
+    const trailFragmentShaderSource = `
+      #ifdef GL_ES
+      precision highp float;
+      #endif
+
+      uniform vec2  u_resolution;
+      uniform sampler2D u_prevTrail; // previous trail buffer
+      uniform sampler2D u_motion;     // current frame motion map (0..1)
+      uniform vec2  u_velocity;       // global motion direction
+      uniform float u_decay;          // how quickly trails fade
+      uniform float u_advection;      // how strongly they drift
+
+      void main() {
+        vec2 uv = gl_FragCoord.xy / u_resolution;
+
+        // Advect previous trail along velocity: sample from shifted position.
+        vec2 advUV = uv - u_velocity * u_advection;
+        vec3 prevTrail = texture2D(u_prevTrail, advUV).rgb;
+        float prevIntensity = prevTrail.r;
+
+        // Current motion at this pixel
+        float motion = texture2D(u_motion, uv).r;
+
+        // Add motion as new energy, previous trail decays slowly.
+        float newIntensity = prevIntensity * u_decay + motion;
+        newIntensity = clamp(newIntensity, 0.0, 1.0);
+
+        gl_FragColor = vec4(newIntensity, newIntensity, newIntensity, 1.0);
+      }
+    `;
+
+    function compileShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      if (!shader) return null;
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error("Shader compile error:", gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vsSource, fsSource) {
+      const vs = compileShader(gl, gl.VERTEX_SHADER, vsSource);
+      const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSource);
+      if (!vs || !fs) return null;
+
+      const program = gl.createProgram();
+      if (!program) return null;
+
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error("Program link error", gl.getProgramInfoLog(program));
+        gl.deleteProgram(program);
+        return null;
+      }
+      return program;
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const canvas = document.getElementById("motionCanvas");
+      const video = document.getElementById("cam");
+      const camStatus = document.getElementById("camStatus");
+      const gl = canvas.getContext("webgl");
+
+      if (!gl) {
+        alert("WebGL not supported in this browser.");
+        return;
+      }
+
+      // --- Camera setup ---
+      navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then((stream) => {
+          video.srcObject = stream;
+          return video.play();
+        })
+        .then(() => {
+          camStatus.textContent = "Camera: on (swipe to cast neon echoes)";
+        })
+        .catch((err) => {
+          console.error("Camera error", err);
+          camStatus.textContent = "Camera error: " + err.message;
+        });
+
+      // --- Programs ---
+      const displayProgram = createProgram(gl, vertexShaderSource, displayFragmentShaderSource);
+      const trailProgram = createProgram(gl, vertexShaderSource, trailFragmentShaderSource);
+      if (!displayProgram || !trailProgram) {
+        alert("Failed to create WebGL programs.");
+        return;
+      }
+
+      // Shared full-screen quad buffer
+      const quadBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      const vertices = new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1
+      ]);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+      // ---- DISPLAY PROGRAM UNIFORMS / ATTRS ----
+      const displayPosLoc = gl.getAttribLocation(displayProgram, "a_position");
+      const dispTimeLoc = gl.getUniformLocation(displayProgram, "u_time");
+      const dispResLoc = gl.getUniformLocation(displayProgram, "u_resolution");
+      const colorMinLoc = gl.getUniformLocation(displayProgram, "u_colorMin");
+      const colorMaxLoc = gl.getUniformLocation(displayProgram, "u_colorMax");
+      const colorSpeedLoc = gl.getUniformLocation(displayProgram, "u_colorSpeed");
+      const motionIntensityLoc = gl.getUniformLocation(displayProgram, "u_motionIntensity");
+      const uCameraDisplayLoc = gl.getUniformLocation(displayProgram, "u_camera");
+      const uTrailLoc = gl.getUniformLocation(displayProgram, "u_trail");
+
+      // ---- TRAIL PROGRAM UNIFORMS / ATTRS ----
+      const trailPosLoc = gl.getAttribLocation(trailProgram, "a_position");
+      const trailResLoc = gl.getUniformLocation(trailProgram, "u_resolution");
+      const uPrevTrailLoc = gl.getUniformLocation(trailProgram, "u_prevTrail");
+      const uMotionTrailLoc = gl.getUniformLocation(trailProgram, "u_motion");
+      const uVelocityLoc = gl.getUniformLocation(trailProgram, "u_velocity");
+      const uDecayLoc = gl.getUniformLocation(trailProgram, "u_decay");
+      const uAdvectionLoc = gl.getUniformLocation(trailProgram, "u_advection");
+
+      // ---- Textures ----
+      // Camera texture (unit 0)
+      const cameraTexture = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, cameraTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      // Motion texture (unit 1)
+      const motionTexture = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, motionTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      // Trail textures (feedback buffer) on unit 2 for display; 0 for trail pass
+      const trailWidth = 512;
+      const trailHeight = 512;
+      const emptyTrailData = new Uint8Array(trailWidth * trailHeight * 4);
+
+      function createTrailTexture() {
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          trailWidth,
+          trailHeight,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          emptyTrailData
+        );
+        return tex;
+      }
+
+      let trailTexA = createTrailTexture(); // read
+      let trailTexB = createTrailTexture(); // write
+
+      // Framebuffer for trail updates
+      const trailFBO = gl.createFramebuffer();
+
+      // Offscreen canvas for motion detection
+      const motionCanvas = document.createElement("canvas");
+      motionCanvas.width = 160;
+      motionCanvas.height = 90;
+      const motionCtx = motionCanvas.getContext("2d");
+      let prevFrameData = null;
+
+      // Global motion center / velocity
+      let prevCenterX = null;
+      let prevCenterY = null;
+      let velocityX = 0.0;
+      let velocityY = 0.0;
+
+      function updateCameraTexture() {
+        if (video.readyState < 2) return;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, cameraTexture);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          video
+        );
+      }
+
+      function updateMotionTextureAndVelocity() {
+        if (video.readyState < 2) return;
+
+        motionCtx.drawImage(
+          video,
+          0,
+          0,
+          motionCanvas.width,
+          motionCanvas.height
+        );
+
+        const frame = motionCtx.getImageData(
+          0,
+          0,
+          motionCanvas.width,
+          motionCanvas.height
+        );
+        const data = frame.data;
+        const motionData = new Uint8Array(data.length);
+
+        let sumX = 0;
+        let sumY = 0;
+        let sumV = 0;
+
+        if (prevFrameData) {
+          for (let i = 0; i < data.length; i += 4) {
+            const dr = data[i]   - prevFrameData[i];
+            const dg = data[i+1] - prevFrameData[i+1];
+            const db = data[i+2] - prevFrameData[i+2];
+            const diff = Math.sqrt(dr*dr + dg*dg + db*db);
+
+            let v = diff > 20 ? diff * 3 : 0; // threshold + scale
+            if (v > 255) v = 255;
+
+            motionData[i]   = v;
+            motionData[i+1] = v;
+            motionData[i+2] = v;
+            motionData[i+3] = 255;
+
+            if (v > 0) {
+              const idx = i / 4;
+              const x = idx % motionCanvas.width;
+              const y = Math.floor(idx / motionCanvas.width);
+              sumX += x * v;
+              sumY += y * v;
+              sumV += v;
+            }
+          }
+        } else {
+          for (let i = 0; i < data.length; i += 4) {
+            motionData[i]   = 0;
+            motionData[i+1] = 0;
+            motionData[i+2] = 0;
+            motionData[i+3] = 255;
+          }
+        }
+
+        prevFrameData = new Uint8ClampedArray(data);
+
+        // Upload motion texture (as 0..1 when sampled)
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, motionTexture);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          motionCanvas.width,
+          motionCanvas.height,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          motionData
+        );
+
+        // Update global velocity from center-of-mass of motion
+        if (sumV > 0) {
+          const cx = sumX / sumV;
+          const cy = sumY / sumV;
+
+          if (prevCenterX !== null && prevCenterY !== null) {
+            let dx = (cx - prevCenterX) / motionCanvas.width;
+            let dy = (cy - prevCenterY) / motionCanvas.height;
+
+            // Scale to taste
+            let targetVX = dx * 4.0;
+            let targetVY = dy * 4.0;
+
+            // Clamp magnitude so it doesn't explode
+            const mag = Math.hypot(targetVX, targetVY);
+            const maxMag = 0.08;
+            if (mag > maxMag && mag > 0.0) {
+              const scale = maxMag / mag;
+              targetVX *= scale;
+              targetVY *= scale;
+            }
+
+            // Smooth / damp
+            const alpha = 0.2;
+            velocityX = velocityX * (1 - alpha) + targetVX * alpha;
+            velocityY = velocityY * (1 - alpha) + targetVY * alpha;
+          }
+
+          prevCenterX = cx;
+          prevCenterY = cy;
+        } else {
+          // No motion: let velocity slowly fade
+          velocityX *= 0.92;
+          velocityY *= 0.92;
+        }
+      }
+
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      const params = {
+        colorMin: 0.0,
+        colorMax: 360.0,
+        colorSpeed: 0.5,
+        motionIntensity: 1.0
+      };
+
+      const trailParams = {
+        decay: 0.95,      // how quickly trails fade
+        advection: 0.7    // how strongly they drift along velocity
+      };
+
+      const start = performance.now();
+
+      function stepTrail() {
+        // Render into trailTexB from trailTexA + motionTexture
+        gl.bindFramebuffer(gl.FRAMEBUFFER, trailFBO);
+        gl.framebufferTexture2D(
+          gl.FRAMEBUFFER,
+          gl.COLOR_ATTACHMENT0,
+          gl.TEXTURE_2D,
+          trailTexB,
+          0
+        );
+
+        gl.useProgram(trailProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.enableVertexAttribArray(trailPosLoc);
+        gl.vertexAttribPointer(trailPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+        gl.viewport(0, 0, trailWidth, trailHeight);
+
+        gl.uniform2f(trailResLoc, trailWidth, trailHeight);
+        gl.uniform2f(uVelocityLoc, velocityX, velocityY);
+        gl.uniform1f(uDecayLoc, trailParams.decay);
+        gl.uniform1f(uAdvectionLoc, trailParams.advection);
+
+        // Prev trail in unit 0
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, trailTexA);
+        gl.uniform1i(uPrevTrailLoc, 0);
+
+        // Motion in unit 1
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, motionTexture);
+        gl.uniform1i(uMotionTrailLoc, 1);
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        // Swap read/write textures
+        let tmp = trailTexA;
+        trailTexA = trailTexB;
+        trailTexB = tmp;
+      }
+
+      function renderDisplay(tSeconds) {
+        gl.useProgram(displayProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.enableVertexAttribArray(displayPosLoc);
+        gl.vertexAttribPointer(displayPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+        gl.viewport(0, 0, canvas.width, canvas.height);
+
+        gl.uniform1f(dispTimeLoc, tSeconds);
+        gl.uniform2f(dispResLoc, canvas.width, canvas.height);
+        gl.uniform1f(colorMinLoc, params.colorMin);
+        gl.uniform1f(colorMaxLoc, params.colorMax);
+        gl.uniform1f(colorSpeedLoc, params.colorSpeed);
+        gl.uniform1f(motionIntensityLoc, params.motionIntensity);
+
+        // Camera in unit 0
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, cameraTexture);
+        gl.uniform1i(uCameraDisplayLoc, 0);
+
+        // Trail in unit 1
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, trailTexA);
+        gl.uniform1i(uTrailLoc, 1);
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
+
+      function frame() {
+        const now = performance.now();
+        const t = (now - start) / 1000;
+
+        updateCameraTexture();
+        updateMotionTextureAndVelocity();
+        stepTrail();
+        renderDisplay(t);
+
+        requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
+
+      // --- UI bindings ---
+      function bindSlider(id, paramKey, valueId, formatter) {
+        const input = document.getElementById(id);
+        const valueSpan = document.getElementById(valueId);
+        if (!input || !valueSpan) return;
+
+        input.value = params[paramKey].toString();
+        valueSpan.textContent = formatter(params[paramKey]);
+
+        input.addEventListener("input", (e) => {
+          const v = parseFloat(e.target.value);
+          params[paramKey] = v;
+          valueSpan.textContent = formatter(v);
+        });
+      }
+
+      bindSlider("colorSpeed", "colorSpeed", "colorSpeedValue", v => v.toFixed(2));
+      bindSlider("colorMin", "colorMin", "colorMinValue", v => v.toFixed(0));
+      bindSlider("colorMax", "colorMax", "colorMaxValue", v => v.toFixed(0));
+      bindSlider("motionIntensity", "motionIntensity", "motionIntensityValue", v => v.toFixed(2));
+    });
+  </script>
+</body>
+</html>
