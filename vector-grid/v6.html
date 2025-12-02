@@ -1,0 +1,944 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vector Grid + Particles (Fullscreen + Overlay Controls)</title>
+    <style>
+      :root {
+        --bg: #07090f;
+        --panel2: rgba(10, 12, 20, 0.72);
+        --panelBorder: rgba(255, 255, 255, 0.16);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.65);
+        --shadow: 0 16px 52px rgba(0, 0, 0, 0.55);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: radial-gradient(1200px 700px at 50% 20%, #10162a 0%, var(--bg) 70%);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      }
+
+      /* Fullscreen canvas */
+      #view {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+      }
+
+      video { display: none; }
+
+      /* Top status */
+      .hud {
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(980px, calc(100vw - 24px));
+        pointer-events: none;
+        z-index: 5;
+      }
+      .hudInner {
+        pointer-events: none;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,0.10);
+        background: rgba(0,0,0,0.35);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+      }
+      .hudTitle {
+        margin: 0;
+        font-size: 0.92rem;
+        font-weight: 650;
+        letter-spacing: 0.2px;
+      }
+      .hudSub {
+        margin: 2px 0 0;
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.25;
+      }
+      .status {
+        margin: 6px 0 0;
+        font-size: 0.74rem;
+        color: rgba(255,255,255,0.72);
+      }
+
+      /* Floating Action Button */
+      .fab {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        width: 56px;
+        height: 56px;
+        border-radius: 18px;
+        border: 1px solid rgba(255,255,255,0.16);
+        background: rgba(255,255,255,0.08);
+        color: var(--text);
+        box-shadow: var(--shadow);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        z-index: 20;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .fab:hover { background: rgba(255,255,255,0.11); }
+      .fab:active { transform: translateY(1px); }
+      .fab span { font-size: 22px; line-height: 1; }
+
+      /* Controls overlay panel */
+      .panel {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        width: min(420px, calc(100vw - 24px));
+        max-height: calc(100vh - 24px);
+        overflow: auto;
+        border-radius: 18px;
+        border: 1px solid var(--panelBorder);
+        background: var(--panel2);
+        backdrop-filter: blur(14px);
+        box-shadow: var(--shadow);
+        padding: 12px 12px 10px;
+        z-index: 15;
+        transform: translateX(0);
+        transition: transform 220ms ease, opacity 220ms ease;
+      }
+      .panel.closed {
+        transform: translateX(calc(100% + 24px));
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .controlsTitle {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 2px 2px 10px;
+      }
+      .controlsTitle h2 {
+        margin: 0;
+        font-size: 0.92rem;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      .controlsTitle .mini {
+        font-size: 0.74rem;
+        color: var(--muted);
+      }
+
+      .toggles {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .toggle {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.05);
+        user-select: none;
+      }
+      .toggle input { transform: translateY(1px); }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+        margin-top: 10px;
+      }
+      label {
+        font-size: 0.78rem;
+        color: rgba(255,255,255,0.88);
+        user-select: none;
+      }
+      .val {
+        font-variant-numeric: tabular-nums;
+        font-size: 0.78rem;
+        color: rgba(255,255,255,0.88);
+        min-width: 104px;
+        text-align: right;
+      }
+      input[type="range"] { width: 100%; }
+
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+      .btnRow {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      button {
+        appearance: none;
+        border: 1px solid rgba(255,255,255,0.18);
+        padding: 9px 12px;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.08);
+        color: var(--text);
+        cursor: pointer;
+      }
+      button:hover { background: rgba(255,255,255,0.11); }
+      button:active { transform: translateY(1px); }
+
+      .hint {
+        margin-top: 10px;
+        font-size: 0.76rem;
+        color: var(--muted);
+        line-height: 1.35;
+        padding: 2px 2px 0;
+      }
+
+      .panel::-webkit-scrollbar { width: 8px; }
+      .panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 999px; }
+      .panel::-webkit-scrollbar-track { background: transparent; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <video id="cam" autoplay playsinline muted></video>
+
+    <div class="hud">
+      <div class="hudInner">
+        <p class="hudTitle">Vector Grid + Particles</p>
+        <p class="hudSub">Fullscreen. Toggle overlay via ⚙️. Drag anywhere to inject vectors.</p>
+        <div class="status" id="status">Camera: idle</div>
+      </div>
+    </div>
+
+    <button class="fab" id="fab" aria-label="Toggle controls" title="Toggle controls">
+      <span>⚙️</span>
+    </button>
+
+    <aside class="panel" id="panel">
+      <div class="controlsTitle">
+        <h2>Controls</h2>
+        <div class="mini">Overlay</div>
+      </div>
+
+      <div class="toggles">
+        <label class="toggle"><input id="useCam" type="checkbox" checked /> Use camera motion</label>
+        <label class="toggle"><input id="showCam" type="checkbox" checked /> Show camera layer</label>
+        <label class="toggle"><input id="flipCam" type="checkbox" /> Flip camera (mirror)</label>
+        <label class="toggle"><input id="showVectors" type="checkbox" checked /> Show vector field</label>
+        <label class="toggle"><input id="showParticles" type="checkbox" checked /> Show particles</label>
+      </div>
+
+      <div>
+        <div class="row"><label for="camAlpha">Camera Brightness</label><div class="val" id="camAlphaVal"></div></div>
+        <input id="camAlpha" type="range" min="0" max="1" step="0.01" />
+      </div>
+
+      <div class="grid2">
+        <div>
+          <div class="row"><label for="cols">Grid Columns</label><div class="val" id="colsVal"></div></div>
+          <input id="cols" type="range" min="8" max="64" step="1" />
+        </div>
+        <div>
+          <div class="row"><label for="rows">Grid Rows</label><div class="val" id="rowsVal"></div></div>
+          <input id="rows" type="range" min="8" max="64" step="1" />
+        </div>
+      </div>
+
+      <div>
+        <div class="row"><label for="gain">Motion → Vector Gain</label><div class="val" id="gainVal"></div></div>
+        <input id="gain" type="range" min="0" max="6" step="0.01" />
+      </div>
+
+      <div>
+        <div class="row"><label for="motionThresh">Motion Sensitivity (threshold)</label><div class="val" id="motionThreshVal"></div></div>
+        <input id="motionThresh" type="range" min="0" max="0.8" step="0.005" />
+      </div>
+
+      <div>
+        <div class="row"><label for="decay">Field Decay (per second)</label><div class="val" id="decayVal"></div></div>
+        <input id="decay" type="range" min="0" max="8" step="0.01" />
+      </div>
+
+      <div class="grid2">
+        <div>
+          <div class="row"><label for="maxLen">Max Arrow Length (px)</label><div class="val" id="maxLenVal"></div></div>
+          <input id="maxLen" type="range" min="6" max="80" step="1" />
+        </div>
+        <div>
+          <div class="row"><label for="zeroEps">Field Zero Snap</label><div class="val" id="zeroEpsVal"></div></div>
+          <input id="zeroEps" type="range" min="0" max="0.5" step="0.005" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <div class="row"><label for="smooth">Flow Smoothing</label><div class="val" id="smoothVal"></div></div>
+          <input id="smooth" type="range" min="0" max="0.98" step="0.01" />
+        </div>
+        <div>
+          <div class="row"><label for="dragGain">Mouse Drag Gain</label><div class="val" id="dragGainVal"></div></div>
+          <input id="dragGain" type="range" min="0" max="6" step="0.01" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <div class="row"><label for="particleCount">Particle Count</label><div class="val" id="particleCountVal"></div></div>
+          <input id="particleCount" type="range" min="0" max="60000" step="100" />
+        </div>
+        <div>
+          <div class="row"><label for="particleLife">Particle Life (frames)</label><div class="val" id="particleLifeVal"></div></div>
+          <input id="particleLife" type="range" min="30" max="1200" step="1" />
+        </div>
+      </div>
+
+      <div>
+        <div class="row"><label for="friction">Friction Strength</label><div class="val" id="frictionVal"></div></div>
+        <input id="friction" type="range" min="0" max="8" step="0.05" />
+      </div>
+
+      <div class="grid2">
+        <div>
+          <div class="row"><label for="glowVel">Glow Velocity (px/s)</label><div class="val" id="glowVelVal"></div></div>
+          <input id="glowVel" type="range" min="0" max="1500" step="10" />
+        </div>
+        <div>
+          <div class="row"><label for="fadeTime">Fade Time (frames)</label><div class="val" id="fadeTimeVal"></div></div>
+          <input id="fadeTime" type="range" min="0" max="400" step="1" />
+        </div>
+      </div>
+
+      <div class="btnRow">
+        <button id="zeroAll">Zero All Vectors</button>
+        <button id="randomPulse">Random Pulse</button>
+      </div>
+
+      <div class="hint">
+        Flip camera mirrors the camera <em>and</em> the flow input, so vectors match the mirrored view.
+      </div>
+    </aside>
+
+    <script>
+      // ---------- helpers ----------
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      const hypot = (x, y) => Math.hypot(x, y);
+      const decayMul = (ratePerSec, dt) => Math.exp(-ratePerSec * dt);
+
+      // ---------- DOM ----------
+      const canvas = document.getElementById("view");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const video = document.getElementById("cam");
+      const statusEl = document.getElementById("status");
+
+      const panel = document.getElementById("panel");
+      const fab = document.getElementById("fab");
+
+      const useCamEl = document.getElementById("useCam");
+      const showCamEl = document.getElementById("showCam");
+      const flipCamEl = document.getElementById("flipCam");
+      const showVectorsEl = document.getElementById("showVectors");
+      const showParticlesEl = document.getElementById("showParticles");
+
+      const camAlphaEl = document.getElementById("camAlpha");
+      const colsEl = document.getElementById("cols");
+      const rowsEl = document.getElementById("rows");
+      const gainEl = document.getElementById("gain");
+      const motionThreshEl = document.getElementById("motionThresh");
+      const decayEl = document.getElementById("decay");
+      const maxLenEl = document.getElementById("maxLen");
+      const zeroEpsEl = document.getElementById("zeroEps");
+      const smoothEl = document.getElementById("smooth");
+      const dragGainEl = document.getElementById("dragGain");
+      const particleCountEl = document.getElementById("particleCount");
+      const particleLifeEl = document.getElementById("particleLife");
+      const frictionEl = document.getElementById("friction");
+      const glowVelEl = document.getElementById("glowVel");
+      const fadeTimeEl = document.getElementById("fadeTime");
+
+      const camAlphaVal = document.getElementById("camAlphaVal");
+      const colsVal = document.getElementById("colsVal");
+      const rowsVal = document.getElementById("rowsVal");
+      const gainVal = document.getElementById("gainVal");
+      const motionThreshVal = document.getElementById("motionThreshVal");
+      const decayVal = document.getElementById("decayVal");
+      const maxLenVal = document.getElementById("maxLenVal");
+      const zeroEpsVal = document.getElementById("zeroEpsVal");
+      const smoothVal = document.getElementById("smoothVal");
+      const dragGainVal = document.getElementById("dragGainVal");
+      const particleCountVal = document.getElementById("particleCountVal");
+      const particleLifeVal = document.getElementById("particleLifeVal");
+      const frictionVal = document.getElementById("frictionVal");
+      const glowVelVal = document.getElementById("glowVelVal");
+      const fadeTimeVal = document.getElementById("fadeTimeVal");
+
+      const zeroAllBtn = document.getElementById("zeroAll");
+      const randomPulseBtn = document.getElementById("randomPulse");
+
+      // ---------- overlay toggle ----------
+      let panelOpen = true;
+      function setPanel(open) {
+        panelOpen = open;
+        panel.classList.toggle("closed", !panelOpen);
+      }
+      fab.addEventListener("click", () => setPanel(!panelOpen));
+      setPanel(true);
+
+      // ---------- DEFAULTS (as requested) ----------
+      const settings = {
+        // grid
+        cols: 47,
+        rows: 28,
+
+        // camera -> field
+        gain: 4.0,
+        motionThresh: 0.32,
+        decay: 7.75,
+        maxLen: 56,
+        zeroEps: 0.255,
+        smooth: 0.70,
+        dragGain: 2.0,
+
+        // particles
+        particleCount: 10000,
+        particleLife: 70,
+        friction: 7.5,
+        glowVel: 450,
+        fadeTime: 4,
+
+        // camera layer
+        camAlpha: 0.82,
+      };
+
+      const MAX_FIELD_MAG = 8.0;
+
+      // ---------- vector field ----------
+      let fieldVX, fieldVY, instVX, instVY, measVX, measVY;
+      function rebuildField() {
+        const n = settings.cols * settings.rows;
+        fieldVX = new Float32Array(n);
+        fieldVY = new Float32Array(n);
+        instVX  = new Float32Array(n);
+        instVY  = new Float32Array(n);
+        measVX  = new Float32Array(n);
+        measVY  = new Float32Array(n);
+      }
+      rebuildField();
+
+      // ---------- particles ----------
+      const particles = [];
+      function sampleLifeFrames() {
+        const mean = settings.particleLife;
+        return Math.max(10, Math.floor(mean * (0.6 + Math.random() * 0.8))); // 0.6x..1.4x
+      }
+      function respawnParticle(p, randomizeAge = false) {
+        p.x = Math.random();
+        p.y = Math.random();
+        p.vx = 0;
+        p.vy = 0;
+        p.life = sampleLifeFrames();
+        p.age = randomizeAge ? Math.floor(Math.random() * p.life) : 0;
+      }
+      function ensureParticleCount() {
+        const target = Math.max(0, Math.floor(settings.particleCount));
+        while (particles.length < target) {
+          const p = { x: 0, y: 0, vx: 0, vy: 0, age: 0, life: 0 };
+          respawnParticle(p, true);
+          particles.push(p);
+        }
+        if (particles.length > target) particles.length = target;
+      }
+      ensureParticleCount();
+
+      // ---------- canvas resize (fullscreen) ----------
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(window.innerWidth * dpr);
+        canvas.height = Math.floor(window.innerHeight * dpr);
+      }
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      // ---------- camera analysis ----------
+      const ANALYSIS_W = 160, ANALYSIS_H = 160;
+      const analysisCanvas = document.createElement("canvas");
+      analysisCanvas.width = ANALYSIS_W;
+      analysisCanvas.height = ANALYSIS_H;
+      const aCtx = analysisCanvas.getContext("2d", { willReadFrequently: true });
+
+      let prevGray = null;
+      let hasCamera = false;
+
+      async function startCamera() {
+        try {
+          statusEl.textContent = "Camera: requesting access…";
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+          video.srcObject = stream;
+          await video.play();
+          hasCamera = true;
+          statusEl.textContent = "Camera: on (wave your hand, or drag to inject vectors)";
+        } catch (e) {
+          hasCamera = false;
+          statusEl.textContent = `Camera: unavailable (${e?.message || "permission denied"}) — drag to test vectors`;
+        }
+      }
+      startCamera();
+
+      function toGray(imageData) {
+        const { data, width, height } = imageData;
+        const out = new Float32Array(width * height);
+        for (let i = 0, p = 0; i < out.length; i++, p += 4) {
+          out[i] = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+        }
+        return out;
+      }
+
+      function estimateFlowGrid(currGray, prevGray, w, h, cols, rows, outU, outV) {
+        const cellW = w / cols;
+        const cellH = h / rows;
+        const EPS_DET = 1e-3;
+        const MAX_FLOW = 6.0;
+
+        for (let gy = 0; gy < rows; gy++) {
+          const y0 = Math.floor(gy * cellH);
+          const y1 = Math.floor((gy + 1) * cellH);
+
+          for (let gx = 0; gx < cols; gx++) {
+            const x0 = Math.floor(gx * cellW);
+            const x1 = Math.floor((gx + 1) * cellW);
+
+            let sumIx2 = 0, sumIy2 = 0, sumIxIy = 0, sumIxIt = 0, sumIyIt = 0;
+
+            const ys = Math.max(1, y0);
+            const ye = Math.min(h - 2, y1);
+            const xs = Math.max(1, x0);
+            const xe = Math.min(w - 2, x1);
+
+            for (let y = ys; y <= ye; y++) {
+              const row = y * w;
+              const rowU = (y - 1) * w;
+              const rowD = (y + 1) * w;
+
+              for (let x = xs; x <= xe; x++) {
+                const i = row + x;
+                const ix = 0.5 * (currGray[i + 1] - currGray[i - 1]);
+                const iy = 0.5 * (currGray[rowD + x] - currGray[rowU + x]);
+                const it = currGray[i] - prevGray[i];
+
+                sumIx2 += ix * ix;
+                sumIy2 += iy * iy;
+                sumIxIy += ix * iy;
+                sumIxIt += ix * it;
+                sumIyIt += iy * it;
+              }
+            }
+
+            const det = sumIx2 * sumIy2 - sumIxIy * sumIxIy;
+            let u = 0, v = 0;
+            if (det > EPS_DET) {
+              const b0 = sumIxIt, b1 = sumIyIt;
+              u = -(sumIy2 * b0 - sumIxIy * b1) / det;
+              v = (sumIxIy * b0 - sumIx2 * b1) / det;
+              u = clamp(u, -MAX_FLOW, MAX_FLOW);
+              v = clamp(v, -MAX_FLOW, MAX_FLOW);
+            }
+
+            const idx = gy * cols + gx;
+            outU[idx] = u;
+            outV[idx] = v;
+          }
+        }
+      }
+
+      function addMotionIntoField(dt) {
+        if (!useCamEl.checked) { prevGray = null; return; }
+        if (!hasCamera || video.readyState < 2) return;
+
+        const vw = video.videoWidth || 640;
+        const vh = video.videoHeight || 480;
+        if (!vw || !vh) return;
+
+        const side = Math.min(vw, vh);
+        const sx = Math.floor((vw - side) / 2);
+        const sy = Math.floor((vh - side) / 2);
+
+        // draw (optionally mirrored) into analysis canvas
+        aCtx.save();
+        aCtx.setTransform(1, 0, 0, 1, 0, 0);
+        aCtx.clearRect(0, 0, ANALYSIS_W, ANALYSIS_H);
+        if (flipCamEl.checked) {
+          aCtx.translate(ANALYSIS_W, 0);
+          aCtx.scale(-1, 1);
+        }
+        aCtx.drawImage(video, sx, sy, side, side, 0, 0, ANALYSIS_W, ANALYSIS_H);
+        aCtx.restore();
+
+        const img = aCtx.getImageData(0, 0, ANALYSIS_W, ANALYSIS_H);
+        const currGray = toGray(img);
+
+        if (!prevGray) { prevGray = currGray; return; }
+
+        estimateFlowGrid(currGray, prevGray, ANALYSIS_W, ANALYSIS_H, settings.cols, settings.rows, instVX, instVY);
+        prevGray = currGray;
+
+        const s = settings.smooth;
+        const inv = 1 - s;
+        const addScale = settings.gain * (60 * dt);
+
+        for (let i = 0; i < fieldVX.length; i++) {
+          measVX[i] = measVX[i] * s + instVX[i] * inv;
+          measVY[i] = measVY[i] * s + instVY[i] * inv;
+
+          const m = hypot(measVX[i], measVY[i]);
+          if (m < settings.motionThresh) continue;
+
+          fieldVX[i] += measVX[i] * addScale;
+          fieldVY[i] += measVY[i] * addScale;
+
+          const fm = hypot(fieldVX[i], fieldVY[i]);
+          if (fm > MAX_FIELD_MAG) {
+            const k = MAX_FIELD_MAG / fm;
+            fieldVX[i] *= k;
+            fieldVY[i] *= k;
+          }
+        }
+      }
+
+      function decayField(dt) {
+        const mul = decayMul(settings.decay, dt);
+        const eps = settings.zeroEps;
+        for (let i = 0; i < fieldVX.length; i++) {
+          let vx = fieldVX[i] * mul;
+          let vy = fieldVY[i] * mul;
+          if (Math.abs(vx) < eps) vx = 0;
+          if (Math.abs(vy) < eps) vy = 0;
+          fieldVX[i] = vx;
+          fieldVY[i] = vy;
+        }
+      }
+
+      // ---------- field sampling (bilinear) ----------
+      function sampleFieldBilinear(nx, ny) {
+        const cols = settings.cols, rows = settings.rows;
+        const gx = nx * cols - 0.5;
+        const gy = ny * rows - 0.5;
+
+        const x0 = clamp(Math.floor(gx), 0, cols - 1);
+        const y0 = clamp(Math.floor(gy), 0, rows - 1);
+        const x1 = clamp(x0 + 1, 0, cols - 1);
+        const y1 = clamp(y0 + 1, 0, rows - 1);
+
+        const tx = clamp(gx - x0, 0, 1);
+        const ty = clamp(gy - y0, 0, 1);
+
+        const i00 = y0 * cols + x0;
+        const i10 = y0 * cols + x1;
+        const i01 = y1 * cols + x0;
+        const i11 = y1 * cols + x1;
+
+        const vx =
+          (1 - ty) * ((1 - tx) * fieldVX[i00] + tx * fieldVX[i10]) +
+          ty       * ((1 - tx) * fieldVX[i01] + tx * fieldVX[i11]);
+
+        const vy =
+          (1 - ty) * ((1 - tx) * fieldVY[i00] + tx * fieldVY[i10]) +
+          ty       * ((1 - tx) * fieldVY[i01] + tx * fieldVY[i11]);
+
+        return { vx, vy };
+      }
+
+      // ---------- particles step ----------
+      function stepParticles(dt, w, h) {
+        const FORCE_PX_PER_SEC2 = 520;
+        const axScale = FORCE_PX_PER_SEC2 / w;
+        const ayScale = FORCE_PX_PER_SEC2 / h;
+        const FRICTION_OFF_MAG = 0.55;
+
+        for (const p of particles) {
+          p.age++;
+          if (p.age >= p.life || p.x < -0.02 || p.x > 1.02 || p.y < -0.02 || p.y > 1.02) {
+            respawnParticle(p, false);
+            continue;
+          }
+
+          const { vx: fvX, vy: fvY } = sampleFieldBilinear(p.x, p.y);
+          const fMag = hypot(fvX, fvY);
+
+          p.vx += fvX * axScale * dt;
+          p.vy += fvY * ayScale * dt;
+
+          if (settings.friction > 0) {
+            const t = clamp(1 - fMag / FRICTION_OFF_MAG, 0, 1);
+            const rate = settings.friction * t;
+            const mul = Math.exp(-rate * dt);
+            p.vx *= mul;
+            p.vy *= mul;
+          }
+
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+        }
+      }
+
+      // ---------- rendering ----------
+      function drawArrow(x, y, dx, dy, maxLen) {
+        const mag = hypot(dx, dy);
+        if (mag <= 1e-6) return;
+
+        const len = Math.min(maxLen, mag);
+        const ux = dx / mag;
+        const uy = dy / mag;
+
+        const x2 = x + ux * len;
+        const y2 = y + uy * len;
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x2, y2);
+
+        const head = Math.max(5, Math.min(10, len * 0.35));
+        const angle = Math.atan2(uy, ux);
+        const a1 = angle + Math.PI * 0.85;
+        const a2 = angle - Math.PI * 0.85;
+
+        ctx.lineTo(x2 + Math.cos(a1) * head, y2 + Math.sin(a1) * head);
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 + Math.cos(a2) * head, y2 + Math.sin(a2) * head);
+        ctx.stroke();
+      }
+
+      function particleAlpha(p, w, h) {
+        const speedPx = Math.hypot(p.vx * w, p.vy * h);
+        const glowVel = settings.glowVel;
+        const velAlpha = glowVel <= 0 ? 1 : clamp(speedPx / glowVel, 0, 1);
+
+        const fadeN = Math.max(0, Math.floor(settings.fadeTime));
+        const remaining = p.life - p.age;
+        const deathFade = fadeN <= 0 ? 1 : clamp(remaining / Math.min(fadeN, p.life), 0, 1);
+
+        return velAlpha * deathFade;
+      }
+
+      function drawCameraLayer(w, h) {
+        if (!showCamEl.checked || !hasCamera || video.readyState < 2) return;
+        const alpha = clamp(settings.camAlpha, 0, 1);
+        if (alpha <= 0) return;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        const vw = video.videoWidth || 640;
+        const vh = video.videoHeight || 480;
+
+        // cover-crop video into fullscreen canvas
+        const scale = Math.max(w / vw, h / vh);
+        const dw = vw * scale;
+        const dh = vh * scale;
+        const dx = (w - dw) / 2;
+        const dy = (h - dh) / 2;
+
+        if (flipCamEl.checked) {
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
+        ctx.restore();
+
+        // subtle darken for readability
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      function render() {
+        const w = canvas.width, h = canvas.height;
+
+        ctx.fillStyle = "#050711";
+        ctx.fillRect(0, 0, w, h);
+
+        drawCameraLayer(w, h);
+
+        const cols = settings.cols, rows = settings.rows;
+        const cellW = w / cols, cellH = h / rows;
+
+        // grid lines
+        ctx.save();
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.lineWidth = Math.max(1, (window.devicePixelRatio || 1));
+        ctx.beginPath();
+        for (let x = 0; x <= cols; x++) { const px = x * cellW; ctx.moveTo(px, 0); ctx.lineTo(px, h); }
+        for (let y = 0; y <= rows; y++) { const py = y * cellH; ctx.moveTo(0, py); ctx.lineTo(w, py); }
+        ctx.stroke();
+        ctx.restore();
+
+        // vectors
+        if (showVectorsEl.checked) {
+          const dpr = window.devicePixelRatio || 1;
+          const maxLen = settings.maxLen * dpr;
+          const arrowScale = 7.5 * dpr;
+
+          for (let gy = 0; gy < rows; gy++) {
+            const cy = (gy + 0.5) * cellH;
+            for (let gx = 0; gx < cols; gx++) {
+              const cx = (gx + 0.5) * cellW;
+              const i = gy * cols + gx;
+              const vx = fieldVX[i], vy = fieldVY[i];
+              const mag = hypot(vx, vy);
+              if (mag <= 1e-6) continue;
+
+              const alpha = clamp(0.12 + mag * 0.18, 0.12, 0.95);
+              ctx.save();
+              ctx.strokeStyle = `rgba(120, 210, 255, ${alpha})`;
+              ctx.lineWidth = Math.max(1.2, 1.6 * dpr);
+              ctx.lineCap = "round";
+              drawArrow(cx, cy, vx * arrowScale, vy * arrowScale, maxLen);
+              ctx.restore();
+            }
+          }
+        }
+
+        // particles
+        if (showParticlesEl.checked) {
+          const dpr = window.devicePixelRatio || 1;
+          const r = 2.0 * dpr;
+
+          for (const p of particles) {
+            const a = particleAlpha(p, w, h);
+            if (a <= 0.002) continue;
+
+            ctx.fillStyle = `rgba(255, 80, 80, ${clamp(a, 0, 0.95)})`;
+            const x = p.x * w, y = p.y * h;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // ---------- mouse inject (fullscreen) ----------
+      let dragging = false;
+      let lastPt = null;
+
+      function canvasToGrid(px, py) {
+        const rect = canvas.getBoundingClientRect();
+        const nx = (px - rect.left) / rect.width;
+        const ny = (py - rect.top) / rect.height;
+        const gx = clamp(Math.floor(nx * settings.cols), 0, settings.cols - 1);
+        const gy = clamp(Math.floor(ny * settings.rows), 0, settings.rows - 1);
+        return { gx, gy };
+      }
+
+      function addVectorAt(gx, gy, vx, vy) {
+        const cols = settings.cols, rows = settings.rows;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            const x = gx + ox, y = gy + oy;
+            if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+            const dist2 = ox * ox + oy * oy;
+            const w = dist2 === 0 ? 1.0 : (dist2 === 1 ? 0.55 : 0.25);
+            const i = y * cols + x;
+            fieldVX[i] += vx * w;
+            fieldVY[i] += vy * w;
+          }
+        }
+      }
+
+      canvas.addEventListener("pointerdown", (e) => {
+        dragging = true;
+        canvas.setPointerCapture(e.pointerId);
+        lastPt = { x: e.clientX, y: e.clientY };
+      });
+
+      canvas.addEventListener("pointermove", (e) => {
+        if (!dragging || !lastPt) return;
+        const dx = e.clientX - lastPt.x;
+        const dy = e.clientY - lastPt.y;
+        lastPt = { x: e.clientX, y: e.clientY };
+
+        const { gx, gy } = canvasToGrid(e.clientX, e.clientY);
+        const g = settings.dragGain * 0.08;
+        addVectorAt(gx, gy, dx * g, dy * g);
+      });
+
+      canvas.addEventListener("pointerup", (e) => {
+        dragging = false;
+        lastPt = null;
+        try { canvas.releasePointerCapture(e.pointerId); } catch {}
+      });
+
+      // ---------- UI binding ----------
+      function bindRange(el, valEl, key, fmt, onChange) {
+        el.value = String(settings[key]);
+        valEl.textContent = fmt(settings[key]);
+        el.addEventListener("input", () => {
+          settings[key] = parseFloat(el.value);
+          valEl.textContent = fmt(settings[key]);
+          onChange?.();
+        });
+      }
+
+      bindRange(camAlphaEl, camAlphaVal, "camAlpha", v => `${Math.round(v * 100)}%`);
+      bindRange(colsEl, colsVal, "cols", v => `${v | 0}`, () => { rebuildField(); });
+      bindRange(rowsEl, rowsVal, "rows", v => `${v | 0}`, () => { rebuildField(); });
+      bindRange(gainEl, gainVal, "gain", v => v.toFixed(2));
+      bindRange(motionThreshEl, motionThreshVal, "motionThresh", v => v.toFixed(3));
+      bindRange(decayEl, decayVal, "decay", v => v.toFixed(2));
+      bindRange(maxLenEl, maxLenVal, "maxLen", v => `${v | 0}`);
+      bindRange(zeroEpsEl, zeroEpsVal, "zeroEps", v => v.toFixed(3));
+      bindRange(smoothEl, smoothVal, "smooth", v => v.toFixed(2));
+      bindRange(dragGainEl, dragGainVal, "dragGain", v => v.toFixed(2));
+      bindRange(particleCountEl, particleCountVal, "particleCount", v => `${v | 0}`, () => { ensureParticleCount(); });
+      bindRange(particleLifeEl, particleLifeVal, "particleLife", v => `${v | 0}`);
+      bindRange(frictionEl, frictionVal, "friction", v => v.toFixed(2));
+      bindRange(glowVelEl, glowVelVal, "glowVel", v => `${v | 0} px/s`);
+      bindRange(fadeTimeEl, fadeTimeVal, "fadeTime", v => `${v | 0} fr`);
+
+      // checkboxes already defaulted via HTML; but keep field consistent if user toggles flip/useCam
+      useCamEl.addEventListener("change", () => { prevGray = null; });
+
+      zeroAllBtn.addEventListener("click", () => { fieldVX.fill(0); fieldVY.fill(0); });
+
+      randomPulseBtn.addEventListener("click", () => {
+        for (let i = 0; i < fieldVX.length; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const m = Math.random() * 2.5;
+          fieldVX[i] += Math.cos(a) * m;
+          fieldVY[i] += Math.sin(a) * m;
+        }
+      });
+
+      // ---------- main loop ----------
+      let lastTime = performance.now();
+
+      function frame(now) {
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+
+        // mobile URL bar changes, etc.
+        const dpr = window.devicePixelRatio || 1;
+        const desiredW = Math.floor(window.innerWidth * dpr);
+        const desiredH = Math.floor(window.innerHeight * dpr);
+        if (canvas.width !== desiredW || canvas.height !== desiredH) resizeCanvas();
+
+        ensureParticleCount();
+
+        addMotionIntoField(dt);
+        decayField(dt);
+        stepParticles(dt, canvas.width, canvas.height);
+        render();
+
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>
