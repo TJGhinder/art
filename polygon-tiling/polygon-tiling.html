@@ -1,0 +1,451 @@
+Polygon Art
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Polygon Tiling</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      height: 100%; margin: 0; background:#000; overflow:hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      touch-action: manipulation;
+    }
+    canvas { display:block; }
+
+    /* Control panel */
+    .ui {
+      position: fixed; left: 14px; top: 14px; z-index: 10;
+      width: min(360px, calc(100vw - 28px));
+      background: rgba(15,15,15,.72);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 16px;
+      padding: 12px 12px 10px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 40px rgba(0,0,0,.55);
+      user-select: none;
+      transition: transform .22s ease, opacity .22s ease;
+    }
+    .ui.hidden {
+      transform: translateX(calc(-100% - 22px));
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .ui h1 { margin: 0 0 10px; font-size: 14px; font-weight: 650; letter-spacing: .2px; opacity:.95; }
+    .row { display:grid; grid-template-columns: 1fr auto; gap: 10px; align-items:center; margin: 8px 0; }
+    label { font-size: 12px; opacity:.9; }
+    input[type="range"] { width: 100%; }
+
+    .pill {
+      display:inline-flex; gap:8px; align-items:center;
+      padding: 6px 10px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.25);
+      font-size: 12px;
+    }
+
+    .mini { font-size: 11px; opacity:.7; margin-top: 8px; line-height: 1.35; }
+    .btns { display:flex; gap:10px; margin-top: 10px; }
+    button {
+      flex:1;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.08);
+      color:#fff;
+      cursor:pointer;
+    }
+    button:hover { background: rgba(255,255,255,.12); }
+
+    /* Floating toggle button (always visible, mobile-friendly) */
+    .fab {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 20;
+      width: 46px;
+      height: 46px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(15,15,15,.64);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 40px rgba(0,0,0,.55);
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .fab:active { transform: translateY(1px); }
+
+    /* Better ergonomics on small screens */
+    @media (max-width: 520px) {
+      .ui {
+        left: 10px;
+        top: 10px;
+        width: min(360px, calc(100vw - 20px));
+        max-height: calc(100vh - 86px);
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <button id="toggleUI" class="fab" aria-label="Toggle controls" title="Toggle controls (double-tap canvas too)">⚙︎</button>
+
+  <div id="panel" class="ui">
+    <h1>Polygon Ring “Stars” Pattern</h1>
+
+    <div class="row"><label>Polygon sides</label><span class="pill"><span id="sidesVal">5</span></span></div>
+    <input id="sides" type="range" min="3" max="14" step="1" value="5">
+
+    <div class="row"><label>Shapes around each ring</label><span class="pill"><span id="aroundVal">12</span></span></div>
+    <input id="around" type="range" min="3" max="36" step="1" value="12">
+
+    <div class="row"><label>Rings (layers)</label><span class="pill"><span id="layersVal">9</span></span></div>
+    <input id="layers" type="range" min="1" max="18" step="1" value="9">
+
+    <div class="row"><label>Ring scale (per layer)</label><span class="pill"><span id="scaleVal">0.86</span></span></div>
+    <input id="scale" type="range" min="0.65" max="0.95" step="0.01" value="0.86">
+
+    <div class="row"><label>Polygon size vs ring radius</label><span class="pill"><span id="ratioVal">1.05</span></span></div>
+    <input id="ratio" type="range" min="0.40" max="1.80" step="0.01" value="1.05">
+
+    <div class="row"><label>Layer rotation step (deg)</label><span class="pill"><span id="rotVal">7</span></span></div>
+    <input id="rotStep" type="range" min="-180" max="180" step="1" value="7">
+
+    <div class="row"><label>Stroke width</label><span class="pill"><span id="strokeVal">1.6</span></span></div>
+    <input id="stroke" type="range" min="0.4" max="4" step="0.1" value="1.6">
+
+    <div class="row"><label>Tiling density</label><span class="pill"><span id="tilingVal">1.10</span></span></div>
+    <input id="tiling" type="range" min="0.7" max="1.8" step="0.01" value="1.10">
+
+    <div class="row">
+      <label>Animate</label>
+      <span class="pill">
+        <input id="anim" type="checkbox" />
+        <span style="opacity:.85">continuous (no bounce)</span>
+      </span>
+    </div>
+
+    <div class="row"><label>Orbit speed (frames / rotation)</label><span class="pill"><span id="orbitVal">240</span></span></div>
+    <input id="orbitFPR" type="range" min="30" max="1600" step="1" value="240">
+
+    <div class="row"><label>Twist speed (frames / rotation)</label><span class="pill"><span id="twistVal">420</span></span></div>
+    <input id="twistFPR" type="range" min="30" max="2400" step="1" value="420">
+
+    <div class="row"><label>Layer drift speed (frames / rotation)</label><span class="pill"><span id="driftVal">900</span></span></div>
+    <input id="driftFPR" type="range" min="30" max="3600" step="1" value="900">
+
+    <div class="row"><label>Layer drift amount</label><span class="pill"><span id="driftAmtVal">0.12</span></span></div>
+    <input id="driftAmt" type="range" min="0" max="0.75" step="0.01" value="0.12">
+
+    <div class="btns">
+      <button id="fit">Fit to screen</button>
+      <button id="random">Randomize</button>
+    </div>
+
+    <div class="mini">
+      Double-tap the canvas (or use the ⚙︎ button) to hide/show controls.<br/>
+      Tip: for more “stars”, increase <b>Polygon size vs ring radius</b> and/or reduce <b>Ring scale</b>.
+    </div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+
+  const panel = document.getElementById("panel");
+  const toggleBtn = document.getElementById("toggleUI");
+
+  const ui = {
+    sides:    document.getElementById("sides"),
+    around:   document.getElementById("around"),
+    layers:   document.getElementById("layers"),
+    scale:    document.getElementById("scale"),
+    ratio:    document.getElementById("ratio"),
+    rotStep:  document.getElementById("rotStep"),
+    stroke:   document.getElementById("stroke"),
+    tiling:   document.getElementById("tiling"),
+    anim:     document.getElementById("anim"),
+    orbitFPR: document.getElementById("orbitFPR"),
+    twistFPR: document.getElementById("twistFPR"),
+    driftFPR: document.getElementById("driftFPR"),
+    driftAmt: document.getElementById("driftAmt"),
+    fit:      document.getElementById("fit"),
+    random:   document.getElementById("random"),
+
+    sidesVal:     document.getElementById("sidesVal"),
+    aroundVal:    document.getElementById("aroundVal"),
+    layersVal:    document.getElementById("layersVal"),
+    scaleVal:     document.getElementById("scaleVal"),
+    ratioVal:     document.getElementById("ratioVal"),
+    rotVal:       document.getElementById("rotVal"),
+    strokeVal:    document.getElementById("strokeVal"),
+    tilingVal:    document.getElementById("tilingVal"),
+    orbitVal:     document.getElementById("orbitVal"),
+    twistVal:     document.getElementById("twistVal"),
+    driftVal:     document.getElementById("driftVal"),
+    driftAmtVal:  document.getElementById("driftAmtVal"),
+  };
+
+  const TWO_PI = Math.PI * 2;
+
+  const state = {
+    frame: 0,
+    baseRingRadius: 120,
+    background: "#000",
+    stroke: "#fff",
+  };
+
+  function setPanelHidden(hidden) {
+    panel.classList.toggle("hidden", hidden);
+    toggleBtn.textContent = hidden ? "⚙︎" : "✕";
+    try { localStorage.setItem("polyStars:panelHidden", hidden ? "1" : "0"); } catch {}
+  }
+
+  // Persist panel state
+  try {
+    const isHidden = localStorage.getItem("polyStars:panelHidden") === "1";
+    setPanelHidden(isHidden);
+  } catch {
+    setPanelHidden(false);
+  }
+
+  toggleBtn.addEventListener("click", () => {
+    setPanelHidden(!panel.classList.contains("hidden"));
+  });
+
+  // Double-tap canvas to toggle UI
+  let lastTap = 0;
+  canvas.addEventListener("pointerdown", () => {
+    const now = performance.now();
+    const dt = now - lastTap;
+    lastTap = now;
+    if (dt > 40 && dt < 320) setPanelHidden(!panel.classList.contains("hidden"));
+  }, { passive: true });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key.toLowerCase() === "h") setPanelHidden(!panel.classList.contains("hidden"));
+  });
+
+  function dprResize() {
+    const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const w = Math.floor(window.innerWidth);
+    const h = Math.floor(window.innerHeight);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+
+  // Convert "frames per rotation" into a continuously increasing angle in radians.
+  function angleFromFPR(frame, framesPerRotation) {
+    const fpr = Math.max(1, framesPerRotation);
+    return TWO_PI * ((frame % fpr) / fpr);
+  }
+
+  function regularPolygonPath(cx, cy, radius, sides, rotationRad) {
+    const step = (Math.PI * 2) / sides;
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const ang = rotationRad + i * step;
+      const x = cx + Math.cos(ang) * radius;
+      const y = cy + Math.sin(ang) * radius;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  function drawTile(tileX, tileY, p) {
+    const baseR = state.baseRingRadius;
+    const layerRotStep = (p.rotStepDeg * Math.PI) / 180;
+
+    // Continuous motion. All "rates" are independent and use frames/rotation.
+    const orbit = p.animate ? angleFromFPR(state.frame, p.orbitFPR) : 0;
+    const twist = p.animate ? angleFromFPR(state.frame, p.twistFPR) : 0;
+    const driftBase = p.animate ? angleFromFPR(state.frame, p.driftFPR) : 0;
+
+    for (let layer = 0; layer < p.layers; layer++) {
+      const k = Math.pow(p.scale, layer);
+      const ringR = baseR * k;
+      const polyR = ringR * p.polyToRing;
+
+      // Each layer gets a slightly different added rotation
+      const layerDrift = driftBase * layer * p.driftAmt;
+      const layerRot = layer * layerRotStep + orbit + layerDrift;
+
+      for (let j = 0; j < p.around; j++) {
+        // Positions orbit around the ring
+        const aPos = (j / p.around) * TWO_PI + layerRot;
+        const cx = tileX + Math.cos(aPos) * ringR;
+        const cy = tileY + Math.sin(aPos) * ringR;
+
+        // Orientation has its own independent rate (plus a light tie to the layer drift)
+        const rot = aPos + twist + layerDrift * 0.35;
+
+        regularPolygonPath(cx, cy, polyR, p.sides, rot);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function draw() {
+    const p = readParams();
+
+    ctx.fillStyle = state.background;
+    ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+    ctx.strokeStyle = state.stroke;
+    ctx.lineWidth = p.strokeWidth;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.globalAlpha = 1;
+
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+
+    const spacing = state.baseRingRadius * 2 * p.tiling;
+    const spacingX = spacing;
+    const spacingY = spacing * 0.92;
+
+    const cols = Math.ceil(w / spacingX) + 2;
+    const rows = Math.ceil(h / spacingY) + 2;
+
+    const startX = -spacingX;
+    const startY = -spacingY;
+
+    for (let r = 0; r < rows; r++) {
+      const y = startY + r * spacingY;
+      const xOffset = (r % 2) * (spacingX * 0.5);
+      for (let c = 0; c < cols; c++) {
+        const x = startX + c * spacingX + xOffset;
+
+        const dx = (x - w * 0.5) / (w * 0.55);
+        const dy = (y - h * 0.5) / (h * 0.55);
+        const edge = Math.sqrt(dx*dx + dy*dy);
+        ctx.globalAlpha = clamp(1 - edge * 0.55, 0.15, 1);
+
+        drawTile(x, y, p);
+      }
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  function readParams() {
+    const p = {
+      sides: parseInt(ui.sides.value, 10),
+      around: parseInt(ui.around.value, 10),
+      layers: parseInt(ui.layers.value, 10),
+      scale: parseFloat(ui.scale.value),
+      polyToRing: parseFloat(ui.ratio.value),
+      rotStepDeg: parseFloat(ui.rotStep.value),
+      strokeWidth: parseFloat(ui.stroke.value),
+      tiling: parseFloat(ui.tiling.value),
+      animate: ui.anim.checked,
+      orbitFPR: parseInt(ui.orbitFPR.value, 10),
+      twistFPR: parseInt(ui.twistFPR.value, 10),
+      driftFPR: parseInt(ui.driftFPR.value, 10),
+      driftAmt: parseFloat(ui.driftAmt.value),
+    };
+
+    ui.sidesVal.textContent  = p.sides;
+    ui.aroundVal.textContent = p.around;
+    ui.layersVal.textContent = p.layers;
+    ui.scaleVal.textContent  = p.scale.toFixed(2);
+    ui.ratioVal.textContent  = p.polyToRing.toFixed(2);
+    ui.rotVal.textContent    = p.rotStepDeg.toFixed(0);
+    ui.strokeVal.textContent = p.strokeWidth.toFixed(1);
+    ui.tilingVal.textContent = p.tiling.toFixed(2);
+
+    ui.orbitVal.textContent = p.orbitFPR;
+    ui.twistVal.textContent = p.twistFPR;
+    ui.driftVal.textContent = p.driftFPR;
+    ui.driftAmtVal.textContent = p.driftAmt.toFixed(2);
+
+    return p;
+  }
+
+  function fitToScreen() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const m = Math.min(w, h);
+    state.baseRingRadius = clamp(m * 0.12, 60, 220);
+  }
+
+  function randomizeNice() {
+    const rInt = (a,b)=>Math.floor(a + Math.random()*(b-a+1));
+    const rFix = (a,b)=>a + Math.random()*(b-a);
+
+    ui.sides.value = rInt(3, 10);
+    ui.around.value = rInt(7, 22);
+    ui.layers.value = rInt(6, 14);
+    ui.scale.value = rFix(0.78, 0.92).toFixed(2);
+    ui.ratio.value = rFix(0.85, 1.35).toFixed(2);
+
+    // Wider rotation range is available (-180..180), but bias random picks
+    // toward nicer lattices.
+    ui.rotStep.value = rInt(-60, 60);
+
+    ui.stroke.value = rFix(0.9, 2.4).toFixed(1);
+    ui.tiling.value = rFix(0.9, 1.35).toFixed(2);
+
+    // Animation rates (frames per rotation):
+    ui.orbitFPR.value = rInt(120, 520);
+    ui.twistFPR.value = rInt(180, 900);
+    ui.driftFPR.value = rInt(300, 1600);
+    ui.driftAmt.value = rFix(0.00, 0.25).toFixed(2);
+
+    draw();
+  }
+
+  // Redraw on any input change
+  const redrawOnInput = () => draw();
+  [
+    "sides","around","layers","scale","ratio","rotStep",
+    "stroke","tiling","anim","orbitFPR","twistFPR","driftFPR","driftAmt"
+  ].forEach(id => {
+    document.getElementById(id).addEventListener("input", redrawOnInput);
+    document.getElementById(id).addEventListener("change", redrawOnInput);
+  });
+
+  ui.fit.addEventListener("click", () => { fitToScreen(); draw(); });
+  ui.random.addEventListener("click", () => { randomizeNice(); });
+
+  window.addEventListener("resize", () => {
+    dprResize();
+    fitToScreen();
+    draw();
+  });
+
+  function tick() {
+    if (ui.anim.checked) {
+      state.frame = (state.frame + 1) >>> 0; // keep it a safe uint
+      draw();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  dprResize();
+  fitToScreen();
+  draw();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
+

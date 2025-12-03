@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>3D Grid — Centered Origin Gravity Waves</title>
+<style>
+  html, body { margin:0; height:100%; background:#0b0b0c; color:#e5e7eb; font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  #gl { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  .ctrl { position:fixed; top:12px; left:12px; background:rgba(17,24,39,0.9); border:1px solid rgba(255,255,255,0.18); border-radius:14px; padding:10px 14px; z-index:20; min-width:230px; display:grid; gap:8px; }
+  .ctrl.hidden { display:none; }
+  .ctrl label { display:flex; flex-direction:column; gap:4px; font-size:12px; }
+  .ctrl .row { display:flex; align-items:center; gap:6px; font-size:12px; }
+  .fab { position:fixed; bottom:14px; right:14px; width:46px; height:46px; border-radius:50%; background:rgba(0,0,0,0.85); border:1px solid rgba(255,255,255,0.18); display:grid; place-items:center; z-index:25; cursor:pointer; }
+  .fab svg { width:20px; height:20px; color:#e5e7eb; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="ctrl hidden" id="ctrlPanel">
+  <label>Speed
+    <input id="spd" type="range" min="0.01" max="2" step="0.01" value="0.25" />
+  </label>
+  <div id="spdVal">0.25×</div>
+  <label>Rotate speed (0–1)
+    <input id="rotSpeed" type="range" min="0" max="1" step="0.01" value="0" />
+  </label>
+  <div id="rotVal">0.00</div>
+  <label>Wave spawn freq
+    <input id="spawnFreq" type="range" min="0.05" max="1" step="0.01" value="0.2" />
+  </label>
+  <div id="spawnVal">0.20× cycle</div>
+  <label>Grid dimension
+    <input id="gridDim" type="number" min="3" max="20" step="1" value="6" />
+  </label>
+  <label>Grid size
+    <input id="gridStep" type="number" min="0.2" max="3" step="0.1" value="1.0" />
+  </label>
+  <label>Particles per edge
+    <input id="ppEdge" type="number" min="1" max="24" step="1" value="6" />
+  </label>
+  <div class="row">
+    <input id="expGrid" type="checkbox" checked />
+    <label for="expGrid" style="flex:1 1 auto; gap:0;">Expanding Grid?</label>
+  </div>
+  <label>Opaque point (0–1 of journey)
+    <input id="opaquePoint" type="range" min="0.05" max="1" step="0.01" value="0.5" />
+  </label>
+  <div id="opaqueVal">0.50 of journey</div>
+  <button id="applyGrid">Apply Grid</button>
+  <small>Particles stay alive until they actually reach the origin (within particle size), not by time.</small>
+</div>
+<button class="fab" id="fab" aria-label="Toggle controls">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+</button>
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.158.0/build/three.module.js" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js';
+
+let scene, camera, renderer, controls;
+let gridSize = 6;
+let step = 1.0;
+let expandingGrid = true;
+let particlesPerEdge = 6;
+let opaquePoint = 0.5;
+
+const spawnOffset = { x: 0, y: 0, z: 0 };
+const SPAWN_OFFSET_STEP = 0.01;
+
+let baseSpawnPositionsUnscaled = [];
+let baseParticleCount = 0;
+let waveObjs = [];
+let lastSpawnTime = 0;
+let t0 = 0;
+let currentGridExtent = (gridSize - 1) * step;
+
+const PARTICLE_EPS = 0.05;
+const PARTICLE_EPS2 = PARTICLE_EPS * PARTICLE_EPS;
+
+function initScene(){
+  const canvas = document.getElementById('gl');
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  renderer.setClearColor('#0b0b0c');
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 300);
+  camera.position.set(9, 9, 9);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.autoRotate = false; // default off
+
+  buildGrid();
+  animate();
+}
+
+function buildUnscaledPositions(){
+  baseSpawnPositionsUnscaled = [];
+  const totalExtent = (gridSize - 1) * step;
+  currentGridExtent = totalExtent;
+  const centerOffset = new THREE.Vector3(totalExtent/2, totalExtent/2, totalExtent/2);
+
+  for (let x = 0; x < gridSize; x++) {
+    for (let y = 0; y < gridSize; y++) {
+      for (let z = 0; z < gridSize; z++) {
+        const baseX = x * step;
+        const baseY = y * step;
+        const baseZ = z * step;
+
+        if (x < gridSize - 1) {
+          for (let i = 0; i <= particlesPerEdge; i++) {
+            const t = i / particlesPerEdge;
+            baseSpawnPositionsUnscaled.push(
+              baseX + t * step - centerOffset.x,
+              baseY - centerOffset.y,
+              baseZ - centerOffset.z
+            );
+          }
+        }
+        if (y < gridSize - 1) {
+          for (let i = 0; i <= particlesPerEdge; i++) {
+            const t = i / particlesPerEdge;
+            baseSpawnPositionsUnscaled.push(
+              baseX - centerOffset.x,
+              baseY + t * step - centerOffset.y,
+              baseZ - centerOffset.z
+            );
+          }
+        }
+        if (z < gridSize - 1) {
+          for (let i = 0; i <= particlesPerEdge; i++) {
+            const t = i / particlesPerEdge;
+            baseSpawnPositionsUnscaled.push(
+              baseX - centerOffset.x,
+              baseY - centerOffset.y,
+              baseZ + t * step - centerOffset.z
+            );
+          }
+        }
+      }
+    }
+  }
+  baseParticleCount = baseSpawnPositionsUnscaled.length / 3;
+}
+
+function buildGrid(){
+  while (scene.children.length) scene.remove(scene.children[0]);
+  waveObjs = [];
+  spawnOffset.x = spawnOffset.y = spawnOffset.z = 0;
+  buildUnscaledPositions();
+
+  const waves = 12;
+  for (let w = 0; w < waves; w++) {
+    const pos = new Float32Array(baseSpawnPositionsUnscaled.length);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.055,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    const pts = new THREE.Points(geo, mat);
+    scene.add(pts);
+    waveObjs.push({
+      geo,
+      mat,
+      positions: pos,
+      startTime: -999,
+      alive: false,
+      done: false,
+      initialR: new Float32Array(baseParticleCount),
+      maxInitialR: 1
+    });
+  }
+  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+  const light = new THREE.PointLight(0xffffff, 1);
+  light.position.set(8, 8, 8);
+  scene.add(light);
+  t0 = performance.now() / 1000;
+  spawnNewWave(t0);
+  lastSpawnTime = t0;
+}
+
+function applySpawnToWave(wObj){
+  const posArr = wObj.positions;
+  let maxR = 0;
+  for (let i = 0; i < baseParticleCount; i++) {
+    const x = baseSpawnPositionsUnscaled[i*3]   + spawnOffset.x;
+    const y = baseSpawnPositionsUnscaled[i*3+1] + spawnOffset.y;
+    const z = baseSpawnPositionsUnscaled[i*3+2] + spawnOffset.z;
+    posArr[i*3]   = x;
+    posArr[i*3+1] = y;
+    posArr[i*3+2] = z;
+    const r = Math.sqrt(x*x + y*y + z*z);
+    wObj.initialR[i] = r;
+    if (r > maxR) maxR = r;
+  }
+  wObj.maxInitialR = Math.max(maxR, 0.0001);
+  wObj.geo.attributes.position.needsUpdate = true;
+}
+
+function incrementSpawnOffset(){
+  spawnOffset.x = (spawnOffset.x + SPAWN_OFFSET_STEP) % 1;
+  spawnOffset.y = (spawnOffset.y + SPAWN_OFFSET_STEP) % 1;
+  spawnOffset.z = (spawnOffset.z + SPAWN_OFFSET_STEP) % 1;
+}
+
+function spawnNewWave(t){
+  let free = waveObjs.find(w => !w.alive || w.done);
+  if (!free) {
+    let oldest = waveObjs[0];
+    for (const w of waveObjs) {
+      if (w.startTime < oldest.startTime) oldest = w;
+    }
+    free = oldest;
+  }
+  free.alive = true;
+  free.done = false;
+  free.startTime = t;
+  applySpawnToWave(free);
+  free.mat.opacity = 0;
+  if (expandingGrid) {
+    incrementSpawnOffset();
+  } else {
+    spawnOffset.x = spawnOffset.y = spawnOffset.z = 0;
+  }
+  return true;
+}
+
+const ctrlPanel = document.getElementById('ctrlPanel');
+const fab = document.getElementById('fab');
+fab.addEventListener('click', () => {
+  ctrlPanel.classList.toggle('hidden');
+});
+
+const spdEl = document.getElementById('spd');
+const spdVal = document.getElementById('spdVal');
+const spawnF = document.getElementById('spawnFreq');
+const spawnVal = document.getElementById('spawnVal');
+const gridDim = document.getElementById('gridDim');
+const gridStepInput = document.getElementById('gridStep');
+const applyGrid = document.getElementById('applyGrid');
+const ppEdgeEl = document.getElementById('ppEdge');
+const expGridEl = document.getElementById('expGrid');
+const opaquePointEl = document.getElementById('opaquePoint');
+const opaqueVal = document.getElementById('opaqueVal');
+const rotEl = document.getElementById('rotSpeed');
+const rotVal = document.getElementById('rotVal');
+
+let speedMul = 0.25;
+let spawnFreq = 0.2;
+let rotateSpeed = 0.0;
+
+spdEl.addEventListener('input', () => {
+  speedMul = parseFloat(spdEl.value);
+  spdVal.textContent = speedMul.toFixed(2) + '×';
+});
+spawnF.addEventListener('input', () => {
+  spawnFreq = parseFloat(spawnF.value);
+  spawnVal.textContent = spawnFreq.toFixed(2) + '× cycle';
+});
+applyGrid.addEventListener('click', () => {
+  gridSize = parseInt(gridDim.value);
+  step = parseFloat(gridStepInput.value);
+  particlesPerEdge = parseInt(ppEdgeEl.value);
+  buildGrid();
+});
+
+expGridEl.addEventListener('change', () => {
+  expandingGrid = expGridEl.checked;
+  if (!expandingGrid) {
+    spawnOffset.x = spawnOffset.y = spawnOffset.z = 0;
+  }
+});
+
+opaquePointEl.addEventListener('input', () => {
+  opaquePoint = parseFloat(opaquePointEl.value);
+  opaqueVal.textContent = opaquePoint.toFixed(2) + ' of journey';
+});
+
+rotEl.addEventListener('input', () => {
+  rotateSpeed = parseFloat(rotEl.value);
+  rotVal.textContent = rotateSpeed.toFixed(2);
+  if (controls) {
+    controls.autoRotate = rotateSpeed > 0;
+    controls.autoRotateSpeed = rotateSpeed * 6; // map 0..1 -> 0..6
+  }
+});
+
+let last = performance.now();
+function animate(){
+  requestAnimationFrame(animate);
+  const nowMs = performance.now();
+  const now = nowMs / 1000;
+  const dt = Math.min(0.05, (nowMs - last) / 1000);
+  last = nowMs;
+
+  const baseWavePeriod = 2.4;
+  const wavePeriod = baseWavePeriod / Math.max(0.15, speedMul);
+  const spawnInterval = wavePeriod * spawnFreq;
+  const G = 18 * speedMul;
+  const pullInRadius2 = 0.12 * 0.12;
+  const tightRadius2 = 0.018 * 0.018;
+
+  if (now - lastSpawnTime > spawnInterval) {
+    spawnNewWave(now);
+    lastSpawnTime = now;
+  }
+
+  for (const wObj of waveObjs) {
+    if (!wObj.alive) continue;
+    const posArr = wObj.positions;
+    let allArrived = true;
+    let maxRemainingR2 = 0;
+
+    for (let i = 0; i < baseParticleCount; i++) {
+      const idx = i * 3;
+      let px = posArr[idx];
+      let py = posArr[idx+1];
+      let pz = posArr[idx+2];
+      const r2 = px*px + py*py + pz*pz;
+
+      if (r2 < tightRadius2) {
+        posArr[idx] = 0;
+        posArr[idx+1] = 0;
+        posArr[idx+2] = 0;
+        continue;
+      }
+
+      if (r2 > PARTICLE_EPS2) {
+        allArrived = false;
+      }
+
+      if (r2 < pullInRadius2) {
+        posArr[idx] *= 0.7;
+        posArr[idx+1] *= 0.7;
+        posArr[idx+2] *= 0.7;
+      } else {
+        const invR = 1 / Math.sqrt(r2 + 1e-6);
+        const ax = -px * invR * invR * G;
+        const ay = -py * invR * invR * G;
+        const az = -pz * invR * invR * G;
+        posArr[idx]   += ax * dt * speedMul * 0.5;
+        posArr[idx+1] += ay * dt * speedMul * 0.5;
+        posArr[idx+2] += az * dt * speedMul * 0.5;
+      }
+
+      if (r2 > maxRemainingR2) maxRemainingR2 = r2;
+    }
+
+    wObj.geo.attributes.position.needsUpdate = true;
+
+    const maxRemaining = Math.sqrt(maxRemainingR2);
+    const progress = 1 - (maxRemaining / wObj.maxInitialR);
+    const alpha = Math.max(0, Math.min(1, progress / Math.max(opaquePoint, 0.0001)));
+    wObj.mat.opacity = alpha;
+
+    if (allArrived) {
+      wObj.alive = false;
+      wObj.done = true;
+      wObj.mat.opacity = 0;
+    }
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+initScene();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
+
