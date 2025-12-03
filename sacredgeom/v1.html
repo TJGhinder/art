@@ -1,0 +1,1343 @@
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sacred Geometry Creator (Vanilla)</title>
+    <style>
+      :root{
+        --bg0:#020617;         /* slate-950 */
+        --bg1:#0b1220;         /* deep slate */
+        --panel:#0f172a;       /* slate-900 */
+        --panel2:#111827;      /* slate-800/900 */
+        --border:#1f2937;      /* slate-800 */
+        --border2:#334155;     /* slate-700 */
+        --text:#e5e7eb;        /* slate-200 */
+        --muted:#94a3b8;       /* slate-400 */
+        --muted2:#64748b;      /* slate-500 */
+        --sky:#0284c7;         /* sky-600 */
+        --sky2:#0ea5e9;        /* sky-500 */
+        --emerald:#10b981;     /* emerald-500 */
+        --emerald2:#34d399;    /* emerald-400 */
+        --orange:#f97316;      /* orange-500 */
+        --shadow: 0 10px 30px rgba(0,0,0,.35);
+        --r2xl: 22px;
+        --rxl: 16px;
+        --r: 12px;
+        --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      }
+      *{ box-sizing:border-box; }
+      body{
+        margin:0;
+        font-family:var(--font);
+        background:var(--bg0);
+        color:var(--text);
+        height:100vh;
+        overflow:hidden;
+      }
+      .app{
+        height:100vh;
+        width:100%;
+        display:flex;
+        flex-direction:column;
+        background: radial-gradient(1200px 800px at 40% 20%, rgba(16,185,129,.07), transparent 60%),
+                    radial-gradient(900px 700px at 70% 10%, rgba(14,165,233,.08), transparent 55%),
+                    var(--bg0);
+      }
+      .top{
+        flex:1;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        border-bottom:1px solid var(--border);
+        background: color-mix(in oklab, var(--bg0) 85%, white 0%);
+        min-height: 280px;
+      }
+      svg#canvas{
+        width:100%;
+        height:100%;
+        max-height:60vh;
+        touch-action: manipulation;
+        display:block;
+      }
+
+      .bottom{
+        width:100%;
+        max-height:45vh;
+        overflow:auto;
+        padding:16px;
+        background: color-mix(in oklab, var(--panel) 92%, transparent);
+        backdrop-filter: blur(10px);
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+      }
+      .header{
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:12px;
+      }
+      h2{
+        margin:0;
+        font-size:18px;
+        letter-spacing:.2px;
+        font-weight:700;
+      }
+      .sub{
+        margin-top:4px;
+        font-size:12px;
+        color:var(--muted);
+        max-width: 640px;
+        line-height: 1.35;
+      }
+      .btn{
+        border:1px solid var(--border2);
+        background: rgba(17,24,39,.65);
+        color:var(--text);
+        padding:8px 12px;
+        font-size:12px;
+        border-radius: var(--r2xl);
+        cursor:pointer;
+        transition: transform .05s ease, background .2s ease, border-color .2s ease, opacity .2s ease;
+        user-select:none;
+        box-shadow: 0 1px 0 rgba(255,255,255,.03) inset;
+        display:inline-flex;
+        gap:8px;
+        align-items:center;
+        white-space:nowrap;
+      }
+      .btn:hover{ background: rgba(30,41,59,.8); border-color: color-mix(in oklab, var(--border2) 70%, white 10%); }
+      .btn:active{ transform: translateY(1px); }
+      .btn.primary{
+        background: var(--sky);
+        border-color: color-mix(in oklab, var(--sky) 80%, white 20%);
+        color:#fff;
+      }
+      .btn.primary:hover{ background: var(--sky2); }
+      .btn.emerald{
+        background: rgba(16,185,129,.12);
+        border-color: rgba(16,185,129,.55);
+        color: color-mix(in oklab, var(--emerald2) 70%, white 30%);
+        font-weight:700;
+      }
+      .btn.emeraldSolid{
+        background: var(--emerald);
+        border-color: color-mix(in oklab, var(--emerald) 80%, black 10%);
+        color: #052e1f;
+        font-weight:800;
+      }
+      .btn.small{
+        border-radius: var(--rxl);
+        padding:6px 10px;
+        font-size:11px;
+      }
+
+      .list{
+        margin:0;
+        padding:0;
+        list-style:none;
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+      }
+      .row{
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:10px;
+        border:1px solid rgba(31,41,55,.9);
+        background: rgba(17,24,39,.55);
+        border-radius: 14px;
+        padding:10px 12px;
+        cursor:pointer;
+        transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
+      }
+      .row:hover{ border-color: rgba(71,85,105,.95); background: rgba(17,24,39,.68); }
+      .row.selected{
+        border-color: rgba(52,211,153,.9);
+        background: rgba(15,23,42,.75);
+        box-shadow: 0 0 0 1px rgba(16,185,129,.35) inset;
+      }
+      .rowTitle{
+        display:flex;
+        align-items:center;
+        gap:8px;
+        font-weight:650;
+        font-size:13px;
+      }
+      .pill{
+        font-size:9px;
+        padding:3px 6px;
+        border-radius: 999px;
+        border: 1px solid rgba(52,211,153,.4);
+        background: rgba(16,185,129,.08);
+        color: rgba(187,247,208,.95);
+        text-transform: lowercase;
+        letter-spacing:.2px;
+      }
+      .meta{
+        margin-top:4px;
+        font-size:11px;
+        color: var(--muted);
+        display:flex;
+        flex-wrap:wrap;
+        gap: 6px 12px;
+        line-height:1.25;
+      }
+      .rowTools{
+        display:flex;
+        gap:8px;
+        flex-shrink:0;
+        padding-top: 2px;
+      }
+
+      .actions{
+        display:flex;
+        justify-content:flex-end;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-top:2px;
+      }
+
+      .tips{
+        border-top:1px solid rgba(31,41,55,.9);
+        padding-top:10px;
+        font-size:11px;
+        color: var(--muted2);
+        line-height:1.35;
+      }
+      .tips b{ color: var(--text); }
+
+      /* modal */
+      .overlay{
+        position:fixed;
+        inset:0;
+        background: rgba(0,0,0,.45);
+        display:none;
+        align-items:center;
+        justify-content:center;
+        padding: 14px;
+        z-index: 50;
+      }
+      .overlay.show{ display:flex; }
+      .modal{
+        width:100%;
+        max-width: 520px;
+        background: rgba(15,23,42,.96);
+        border:1px solid rgba(51,65,85,.9);
+        border-radius: var(--r2xl);
+        box-shadow: var(--shadow);
+        padding: 14px;
+      }
+      .modalHeader{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        margin-bottom: 6px;
+      }
+      .modalHeader h3{
+        margin:0;
+        font-size: 14px;
+        font-weight: 750;
+      }
+      .xbtn{
+        border:none;
+        background: transparent;
+        color: var(--muted);
+        font-size: 16px;
+        cursor:pointer;
+        padding: 6px 8px;
+        border-radius: 10px;
+      }
+      .xbtn:hover{ background: rgba(148,163,184,.08); color: var(--text); }
+
+      .help{
+        margin:0 0 10px 0;
+        font-size: 11px;
+        color: var(--muted);
+        line-height:1.35;
+      }
+      .grid{
+        display:grid;
+        gap: 10px;
+      }
+      .grid.two{ grid-template-columns: 1fr 1fr; }
+      .field{
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+      }
+      label span{
+        font-size: 12px;
+        color: rgba(226,232,240,.92);
+      }
+      input[type="text"], input[type="number"], select{
+        width:100%;
+        padding: 9px 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(51,65,85,.9);
+        background: rgba(17,24,39,.7);
+        color: var(--text);
+        outline:none;
+        font-size: 12px;
+      }
+      input[type="text"]::placeholder{ color: rgba(148,163,184,.65); }
+      input:focus, select:focus{
+        box-shadow: 0 0 0 3px rgba(14,165,233,.18);
+        border-color: rgba(14,165,233,.55);
+      }
+      .checks{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 2px;
+      }
+      .chk{
+        display:flex;
+        align-items:center;
+        gap: 8px;
+        font-size: 12px;
+        color: rgba(226,232,240,.92);
+      }
+      .chk input{ width: 14px; height: 14px; accent-color: var(--emerald); }
+      .modalFooter{
+        display:flex;
+        justify-content:flex-end;
+        gap: 10px;
+        border-top: 1px solid rgba(31,41,55,.9);
+        padding-top: 12px;
+        margin-top: 12px;
+      }
+
+      /* preview overlay */
+      .previewOverlay{
+        position:fixed;
+        inset:0;
+        display:none;
+        align-items:center;
+        justify-content:center;
+        background: rgba(0,0,0,.62);
+        z-index: 60;
+      }
+      .previewOverlay.show{ display:flex; }
+      .previewWrap{
+        width:100%;
+        height:100%;
+        padding: 18px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        position:relative;
+      }
+      svg#previewSvg{
+        max-width:100%;
+        max-height:100%;
+        border-radius: 28px;
+        box-shadow: 0 24px 60px rgba(0,0,0,.45);
+        background: linear-gradient(to bottom, #fff, #f5f5f5, #e5e5e5);
+      }
+      .previewHint{
+        position:absolute;
+        bottom: 18px;
+        left:0; right:0;
+        display:flex;
+        justify-content:center;
+        pointer-events:none;
+      }
+      .previewHint span{
+        font-size: 10px;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        background: rgba(0,0,0,.6);
+        color: rgba(245,245,245,.95);
+        padding: 8px 12px;
+        border-radius: 999px;
+      }
+
+      @media (max-width: 560px){
+        .grid.two{ grid-template-columns: 1fr; }
+        .checks{ grid-template-columns: 1fr; }
+        .top svg#canvas{ max-height: 56vh; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <div class="top">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sacred geometry canvas"></svg>
+      </div>
+
+      <div class="bottom">
+        <div class="header">
+          <div class="minw">
+            <h2>Layers</h2>
+            <div class="sub">
+              Tap anywhere in the canvas or a row here to select a layer. Edit to tweak name, radius, point count,
+              visibility, polygons, and orientation.
+            </div>
+          </div>
+          <button class="btn primary" id="btnNew"><span>➕</span><span>New layer</span></button>
+        </div>
+
+        <div id="layersEmpty" class="sub" style="display:none;">No layers yet.</div>
+        <ul class="list" id="layersList"></ul>
+
+        <div class="actions">
+          <button class="btn emerald" id="btnRandom"><span>✨</span><span>Randomize</span></button>
+          <button class="btn emeraldSolid" id="btnPreview"><span>👁️</span><span>Preview</span></button>
+        </div>
+
+        <div class="tips">
+          Tips: Use layer names to track roles ("Seed of Life", "Outer halo"). Duplicate a layer or use <b>Randomize</b>
+          to generate a multi-layer pattern that plays with simple ratios and the golden ratio. On mobile, pinch-zoom your
+          browser and tap near any feature; the closest layer will auto-select.
+        </div>
+      </div>
+    </div>
+
+    <!-- New Layer Modal -->
+    <div class="overlay" id="newOverlay" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="newTitle">
+        <div class="modalHeader">
+          <h3 id="newTitle">New Layer</h3>
+          <button class="xbtn" id="newClose" aria-label="Close">✕</button>
+        </div>
+        <p class="help">Define a new circle layer. Attach it to the center or to the points of an existing layer.</p>
+
+        <div class="grid">
+          <div class="field">
+            <label>
+              <span>Name</span>
+              <input id="newName" type="text" placeholder="Layer X" />
+            </label>
+          </div>
+        </div>
+
+        <div class="grid two" style="margin-top:10px;">
+          <div class="field">
+            <label>
+              <span>Radius</span>
+              <input id="newRadius" type="number" min="1" />
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              <span>Point count</span>
+              <input id="newPointCount" type="number" min="1" max="64" />
+            </label>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:10px;">
+          <label>
+            <span>Attach to</span>
+            <select id="newAttach"></select>
+          </label>
+        </div>
+
+        <div class="checks">
+          <label class="chk"><input id="newShowPoints" type="checkbox" /> <span>Show points</span></label>
+          <label class="chk"><input id="newDrawCircle" type="checkbox" /> <span>Draw circle</span></label>
+          <label class="chk"><input id="newDrawPoly" type="checkbox" /> <span>Draw polygon</span></label>
+          <div class="field">
+            <label>
+              <span>Point orientation</span>
+              <select id="newOrient">
+                <option value="top">top</option>
+                <option value="right">right</option>
+                <option value="bottom">bottom</option>
+                <option value="left">left</option>
+                <option value="centered">centered</option>
+                <option value="outward">outward</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="modalFooter">
+          <button class="btn" id="newCancel">Cancel</button>
+          <button class="btn primary" id="newSave">Save layer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Layer Modal -->
+    <div class="overlay" id="editOverlay" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+        <div class="modalHeader">
+          <h3 id="editTitle">Edit Layer</h3>
+          <button class="xbtn" id="editClose" aria-label="Close">✕</button>
+        </div>
+        <p class="help">
+          Adjust the name, radius, point count, visibility, circle/polygon drawing, and orientation for this layer.
+          Attachments stay the same.
+        </p>
+
+        <div class="grid">
+          <div class="field">
+            <label>
+              <span>Name</span>
+              <input id="editName" type="text" />
+            </label>
+          </div>
+        </div>
+
+        <div class="grid two" style="margin-top:10px;">
+          <div class="field">
+            <label>
+              <span>Radius</span>
+              <input id="editRadius" type="number" min="1" />
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              <span>Point count</span>
+              <input id="editPointCount" type="number" min="1" max="64" />
+            </label>
+          </div>
+        </div>
+
+        <div class="checks" style="margin-top:10px;">
+          <label class="chk"><input id="editShowPoints" type="checkbox" /> <span>Show points</span></label>
+          <label class="chk"><input id="editDrawCircle" type="checkbox" /> <span>Draw circle</span></label>
+          <label class="chk"><input id="editDrawPoly" type="checkbox" /> <span>Draw polygon</span></label>
+          <div class="field">
+            <label>
+              <span>Point orientation</span>
+              <select id="editOrient">
+                <option value="top">top</option>
+                <option value="right">right</option>
+                <option value="bottom">bottom</option>
+                <option value="left">left</option>
+                <option value="centered">centered</option>
+                <option value="outward">outward</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="modalFooter">
+          <button class="btn" id="editCancel">Cancel</button>
+          <button class="btn emeraldSolid" id="editSave">Save changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Overlay -->
+    <div class="previewOverlay" id="previewOverlay" aria-hidden="true">
+      <div class="previewWrap" id="previewWrap">
+        <svg id="previewSvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Preview"></svg>
+        <div class="previewHint"><span>Tap anywhere to close preview</span></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const PHI = (1 + Math.sqrt(5)) / 2;
+        const MAX_ITEMS = 300;
+
+        const state = {
+          layers: [
+            {
+              id: 1,
+              name: "Base Circle",
+              radius: 120,
+              pointCount: 6,
+              parentLayerId: null,
+              pointsVisible: true,
+              pointOrientation: "top", // top|bottom|left|right|centered|outward
+              drawCircle: true,
+              drawPolygon: false,
+            },
+          ],
+          selectedLayerId: 1,
+
+          // modal buffers
+          newLayer: null,
+          editingLayer: null,
+
+          // geometry cache
+          geometry: { circles: [], points: [], pickPoints: [], polygons: [], maxExtent: 10 },
+        };
+
+        // ---- DOM refs
+        const svg = document.getElementById("canvas");
+        const layersList = document.getElementById("layersList");
+        const layersEmpty = document.getElementById("layersEmpty");
+
+        const btnNew = document.getElementById("btnNew");
+        const btnRandom = document.getElementById("btnRandom");
+        const btnPreview = document.getElementById("btnPreview");
+
+        // New modal
+        const newOverlay = document.getElementById("newOverlay");
+        const newClose = document.getElementById("newClose");
+        const newCancel = document.getElementById("newCancel");
+        const newSave = document.getElementById("newSave");
+        const newName = document.getElementById("newName");
+        const newRadius = document.getElementById("newRadius");
+        const newPointCount = document.getElementById("newPointCount");
+        const newAttach = document.getElementById("newAttach");
+        const newShowPoints = document.getElementById("newShowPoints");
+        const newDrawCircle = document.getElementById("newDrawCircle");
+        const newDrawPoly = document.getElementById("newDrawPoly");
+        const newOrient = document.getElementById("newOrient");
+
+        // Edit modal
+        const editOverlay = document.getElementById("editOverlay");
+        const editClose = document.getElementById("editClose");
+        const editCancel = document.getElementById("editCancel");
+        const editSave = document.getElementById("editSave");
+        const editName = document.getElementById("editName");
+        const editRadius = document.getElementById("editRadius");
+        const editPointCount = document.getElementById("editPointCount");
+        const editShowPoints = document.getElementById("editShowPoints");
+        const editDrawCircle = document.getElementById("editDrawCircle");
+        const editDrawPoly = document.getElementById("editDrawPoly");
+        const editOrient = document.getElementById("editOrient");
+
+        // Preview
+        const previewOverlay = document.getElementById("previewOverlay");
+        const previewSvg = document.getElementById("previewSvg");
+
+        // ---- helpers
+        function nextId() {
+          return state.layers.length ? Math.max(...state.layers.map((l) => l.id)) + 1 : 1;
+        }
+        function layerMap() {
+          const m = new Map();
+          state.layers.forEach((l) => m.set(l.id, l));
+          return m;
+        }
+        function clamp(n, a, b) {
+          return Math.min(Math.max(n, a), b);
+        }
+        function randomChoice(list) {
+          return list[Math.floor(Math.random() * list.length)];
+        }
+        function orientationLabel(v) {
+          return v;
+        }
+
+        function orientedPoints(cx, cy, radius, count, startAngle = 0) {
+          const pts = [];
+          if (count <= 0) return pts;
+          for (let i = 0; i < count; i++) {
+            const angle = startAngle + (2 * Math.PI * i) / count;
+            pts.push({ x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+          }
+          return pts;
+        }
+
+        function getStartAngleForInstance(layer, instance) {
+          const orientation = layer.pointOrientation || "top";
+
+          // Fixed cardinal orientations (global)
+          if (orientation === "top") return -Math.PI / 2;
+          if (orientation === "right") return 0;
+          if (orientation === "bottom") return Math.PI / 2;
+          if (orientation === "left") return Math.PI;
+
+          const parent = instance.parentCenter;
+          if (!parent) return -Math.PI / 2;
+
+          const dx = parent.x - instance.x;
+          const dy = parent.y - instance.y;
+          const mag = Math.hypot(dx, dy);
+          if (mag === 0) return -Math.PI / 2;
+
+          const angleToParent = Math.atan2(dy, dx);
+          if (orientation === "centered") return angleToParent;
+          if (orientation === "outward") return angleToParent + Math.PI;
+
+          return -Math.PI / 2;
+        }
+
+        function estimateItemCount(layers) {
+          const instancesByLayer = new Map();
+          let total = 0;
+
+          const byId = new Map();
+          layers.forEach((l) => byId.set(l.id, l));
+
+          layers.forEach((layer) => {
+            let instanceCount = 0;
+            if (layer.parentLayerId == null) {
+              instanceCount = 1;
+            } else {
+              const parent = byId.get(layer.parentLayerId);
+              const parentInstances = instancesByLayer.get(layer.parentLayerId) || 0;
+              if (!parent || parent.pointCount <= 0 || parentInstances <= 0) instanceCount = 0;
+              else instanceCount = parentInstances * parent.pointCount;
+            }
+            instancesByLayer.set(layer.id, instanceCount);
+
+            const perInstanceItems =
+              (layer.drawCircle ? 1 : 0) +
+              (layer.drawPolygon ? 1 : 0) +
+              (layer.pointsVisible ? layer.pointCount : 0);
+
+            total += instanceCount * perInstanceItems;
+          });
+
+          return total;
+        }
+
+        function computeGeometry() {
+          const m = layerMap();
+          const instancesByLayer = new Map();
+
+          const circles = [];
+          const points = [];
+          const pickPoints = [];
+          const polygons = [];
+
+          // pass 1: instances
+          state.layers.forEach((layer) => {
+            let instances = [];
+            if (layer.parentLayerId == null) {
+              instances = [{ x: 0, y: 0, parentCenter: { x: 0, y: 0 } }];
+            } else {
+              const parent = m.get(layer.parentLayerId);
+              const parentInstances = instancesByLayer.get(layer.parentLayerId) || [];
+              if (!parent) {
+                instances = [];
+              } else {
+                instances = parentInstances.flatMap((inst) => {
+                  const parentPts = orientedPoints(
+                    inst.x,
+                    inst.y,
+                    parent.radius,
+                    parent.pointCount,
+                    getStartAngleForInstance(parent, inst)
+                  );
+                  return parentPts.map((p) => ({ x: p.x, y: p.y, parentCenter: { x: inst.x, y: inst.y } }));
+                });
+              }
+            }
+            instancesByLayer.set(layer.id, instances);
+          });
+
+          // pass 2: renderables
+          let maxExtent = 1;
+
+          state.layers.forEach((layer) => {
+            const instances = instancesByLayer.get(layer.id) || [];
+            instances.forEach((inst) => {
+              if (layer.drawCircle) circles.push({ cx: inst.x, cy: inst.y, r: layer.radius, layerId: layer.id });
+
+              const startAngle = getStartAngleForInstance(layer, inst);
+              const layerPts = orientedPoints(inst.x, inst.y, layer.radius, layer.pointCount, startAngle);
+
+              // hit testing points
+              layerPts.forEach((p) => pickPoints.push({ x: p.x, y: p.y, layerId: layer.id }));
+
+              // visible dots
+              if (layer.pointsVisible) layerPts.forEach((p) => points.push({ x: p.x, y: p.y, layerId: layer.id }));
+
+              // polygon
+              if (layer.drawPolygon && layerPts.length > 1) {
+                polygons.push({ layerId: layer.id, points: layerPts.map((p) => `${p.x},${p.y}`).join(" ") });
+              }
+
+              const dist = Math.hypot(inst.x, inst.y) + layer.radius;
+              if (dist > maxExtent) maxExtent = dist;
+            });
+          });
+
+          if (maxExtent < 10) maxExtent = 10;
+          state.geometry = { circles, points, pickPoints, polygons, maxExtent };
+        }
+
+        function clear(node) {
+          while (node.firstChild) node.removeChild(node.firstChild);
+        }
+
+        function svgEl(tag, attrs = {}) {
+          const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+          for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+          return n;
+        }
+
+        function renderSvg() {
+          computeGeometry();
+          const { circles, points, polygons, maxExtent } = state.geometry;
+
+          const viewBox = [-maxExtent, -maxExtent, maxExtent * 2, maxExtent * 2].join(" ");
+          svg.setAttribute("viewBox", viewBox);
+
+          clear(svg);
+
+          // background
+          svg.appendChild(
+            svgEl("rect", {
+              x: -maxExtent,
+              y: -maxExtent,
+              width: maxExtent * 2,
+              height: maxExtent * 2,
+              fill: "#020617",
+            })
+          );
+
+          // defs & glow
+          const defs = svgEl("defs");
+          const grad = svgEl("radialGradient", { id: "bgGlow", r: "60%" });
+          grad.appendChild(svgEl("stop", { offset: "0%", "stop-color": "#0f172a" }));
+          grad.appendChild(svgEl("stop", { offset: "100%", "stop-color": "transparent" }));
+          defs.appendChild(grad);
+          svg.appendChild(defs);
+
+          svg.appendChild(svgEl("circle", { cx: 0, cy: 0, r: maxExtent, fill: "url(#bgGlow)" }));
+
+          // center point
+          svg.appendChild(svgEl("circle", { cx: 0, cy: 0, r: maxExtent * 0.005, fill: "#e5e7eb" }));
+
+          // polygons
+          polygons.forEach((poly) => {
+            const isSelected = poly.layerId === state.selectedLayerId;
+            svg.appendChild(
+              svgEl("polygon", {
+                points: poly.points,
+                fill: "none",
+                stroke: isSelected ? "#4ade80" : "#22c55e",
+                "stroke-width": maxExtent * (isSelected ? 0.003 : 0.002),
+                "stroke-opacity": isSelected ? 0.95 : 0.7,
+              })
+            );
+          });
+
+          // circles
+          circles.forEach((c) => {
+            const isSelected = c.layerId === state.selectedLayerId;
+            svg.appendChild(
+              svgEl("circle", {
+                cx: c.cx,
+                cy: c.cy,
+                r: c.r,
+                fill: "none",
+                stroke: isSelected ? "#4ade80" : "#38bdf8",
+                "stroke-width": maxExtent * (isSelected ? 0.0035 : 0.002),
+                "stroke-opacity": isSelected ? 1 : 0.8,
+              })
+            );
+          });
+
+          // points
+          points.forEach((p) => {
+            const isSelected = p.layerId === state.selectedLayerId;
+            svg.appendChild(
+              svgEl("circle", {
+                cx: p.x,
+                cy: p.y,
+                r: maxExtent * 0.009,
+                fill: isSelected ? "#bbf7d0" : "#f97316",
+              })
+            );
+          });
+        }
+
+        function renderPreview() {
+          const { circles, points, polygons, maxExtent } = state.geometry;
+          const previewPadY = 40;
+          const previewViewBox = [
+            -maxExtent,
+            -maxExtent - previewPadY,
+            maxExtent * 2,
+            maxExtent * 2 + previewPadY * 2,
+          ].join(" ");
+          previewSvg.setAttribute("viewBox", previewViewBox);
+          clear(previewSvg);
+
+          const defs = svgEl("defs");
+          const grad = svgEl("radialGradient", { id: "previewGlow", r: "60%" });
+          grad.appendChild(svgEl("stop", { offset: "0%", "stop-color": "#ffffff" }));
+          grad.appendChild(svgEl("stop", { offset: "70%", "stop-color": "#f5f5f5" }));
+          grad.appendChild(svgEl("stop", { offset: "100%", "stop-color": "#e5e5e5" }));
+          defs.appendChild(grad);
+          previewSvg.appendChild(defs);
+
+          previewSvg.appendChild(
+            svgEl("rect", {
+              x: -maxExtent,
+              y: -maxExtent - previewPadY,
+              width: maxExtent * 2,
+              height: maxExtent * 2 + previewPadY * 2,
+              fill: "url(#previewGlow)",
+            })
+          );
+
+          polygons.forEach((poly) => {
+            previewSvg.appendChild(
+              svgEl("polygon", {
+                points: poly.points,
+                fill: "none",
+                stroke: "#111827",
+                "stroke-width": maxExtent * 0.007,
+                "stroke-opacity": 0.95,
+              })
+            );
+          });
+
+          circles.forEach((c) => {
+            previewSvg.appendChild(
+              svgEl("circle", {
+                cx: c.cx,
+                cy: c.cy,
+                r: c.r,
+                fill: "none",
+                stroke: "#111827",
+                "stroke-width": maxExtent * 0.006,
+                "stroke-opacity": 0.9,
+              })
+            );
+          });
+
+          points.forEach((p) => {
+            previewSvg.appendChild(
+              svgEl("circle", {
+                cx: p.x,
+                cy: p.y,
+                r: maxExtent * 0.008,
+                fill: "#111827",
+                "fill-opacity": 0.95,
+              })
+            );
+          });
+        }
+
+        function renderLayersList() {
+          const m = layerMap();
+          clear(layersList);
+
+          layersEmpty.style.display = state.layers.length ? "none" : "block";
+
+          state.layers.forEach((l) => {
+            const isSelected = l.id === state.selectedLayerId;
+
+            const li = document.createElement("li");
+            li.className = "row" + (isSelected ? " selected" : "");
+            li.dataset.layerId = String(l.id);
+            li.tabIndex = 0;
+
+            const left = document.createElement("div");
+            left.style.minWidth = "0";
+
+            const title = document.createElement("div");
+            title.className = "rowTitle";
+
+            const nameSpan = document.createElement("span");
+            nameSpan.textContent = l.name;
+            nameSpan.style.maxWidth = "min(44vw, 420px)";
+            nameSpan.style.overflow = "hidden";
+            nameSpan.style.textOverflow = "ellipsis";
+            nameSpan.style.whiteSpace = "nowrap";
+
+            title.appendChild(nameSpan);
+
+            if (isSelected) {
+              const pill = document.createElement("span");
+              pill.className = "pill";
+              pill.textContent = "selected";
+              title.appendChild(pill);
+            }
+
+            const meta = document.createElement("div");
+            meta.className = "meta";
+
+            const attachName =
+              l.parentLayerId == null ? "center" : "points of " + ((m.get(l.parentLayerId) || {}).name || "(unknown)");
+            meta.innerHTML = `
+              <span>radius ${l.radius}, points ${l.pointCount}</span>
+              <span>attach ${attachName}</span>
+              <span>dots ${l.pointsVisible ? "on" : "off"}</span>
+              <span>circle ${l.drawCircle ? "on" : "off"}, poly ${l.drawPolygon ? "on" : "off"}</span>
+              <span>orientation ${orientationLabel(l.pointOrientation)}</span>
+            `;
+
+            left.appendChild(title);
+            left.appendChild(meta);
+
+            const tools = document.createElement("div");
+            tools.className = "rowTools";
+
+            const copyBtn = document.createElement("button");
+            copyBtn.className = "btn small";
+            copyBtn.textContent = "Copy";
+            copyBtn.dataset.action = "copy";
+            copyBtn.dataset.layerId = String(l.id);
+
+            const editBtn = document.createElement("button");
+            editBtn.className = "btn small";
+            editBtn.textContent = "Edit";
+            editBtn.dataset.action = "edit";
+            editBtn.dataset.layerId = String(l.id);
+
+            tools.appendChild(copyBtn);
+            tools.appendChild(editBtn);
+
+            li.appendChild(left);
+            li.appendChild(tools);
+
+            layersList.appendChild(li);
+
+            if (isSelected) {
+              // auto-scroll selected into view (like React effect)
+              requestAnimationFrame(() => li.scrollIntoView({ behavior: "smooth", block: "center" }));
+            }
+          });
+        }
+
+        function render() {
+          renderSvg();
+          renderLayersList();
+        }
+
+        // ---- actions
+        function openNewLayerModal() {
+          const defaultParentId = state.layers[0] ? state.layers[0].id : null;
+          state.newLayer = {
+            name: "",
+            radius: 60,
+            pointCount: 6,
+            parentLayerId: defaultParentId,
+            pointsVisible: true,
+            pointOrientation: "top",
+            drawCircle: true,
+            drawPolygon: false,
+          };
+
+          populateNewModal();
+          showOverlay(newOverlay, true);
+          newName.focus();
+        }
+
+        function populateNewModal() {
+          const n = nextId();
+          newName.placeholder = `Layer ${n}`;
+          newName.value = state.newLayer.name;
+          newRadius.value = state.newLayer.radius;
+          newPointCount.value = state.newLayer.pointCount;
+          newShowPoints.checked = !!state.newLayer.pointsVisible;
+          newDrawCircle.checked = !!state.newLayer.drawCircle;
+          newDrawPoly.checked = !!state.newLayer.drawPolygon;
+          newOrient.value = state.newLayer.pointOrientation;
+
+          // attach select
+          clear(newAttach);
+          const optCenter = document.createElement("option");
+          optCenter.value = "center";
+          optCenter.textContent = "Center point";
+          newAttach.appendChild(optCenter);
+
+          state.layers.forEach((l) => {
+            const opt = document.createElement("option");
+            opt.value = String(l.id);
+            opt.textContent = `Points of: ${l.name}`;
+            newAttach.appendChild(opt);
+          });
+
+          newAttach.value = state.newLayer.parentLayerId == null ? "center" : String(state.newLayer.parentLayerId);
+        }
+
+        function addLayerFromModal() {
+          const nl = state.newLayer;
+          if (!nl) return;
+
+          const radius = Number(newRadius.value);
+          const pointCount = Number(newPointCount.value);
+
+          if (!radius || radius <= 0) return;
+          if (!pointCount || pointCount < 1) return;
+
+          const name = (newName.value || "").trim() || `Layer ${nextId()}`;
+          const attachVal = newAttach.value;
+          const parentLayerId = attachVal === "center" ? null : Number(attachVal);
+
+          const layer = {
+            id: nextId(),
+            name,
+            radius,
+            pointCount,
+            parentLayerId,
+            pointsVisible: !!newShowPoints.checked,
+            pointOrientation: newOrient.value,
+            drawCircle: !!newDrawCircle.checked,
+            drawPolygon: !!newDrawPoly.checked,
+          };
+
+          state.layers = [...state.layers, layer];
+          state.selectedLayerId = layer.id;
+
+          showOverlay(newOverlay, false);
+          render();
+        }
+
+        function startEditLayer(layerId) {
+          const layer = state.layers.find((l) => l.id === layerId);
+          if (!layer) return;
+
+          state.editingLayer = {
+            id: layer.id,
+            name: layer.name,
+            radius: layer.radius,
+            pointCount: layer.pointCount,
+            pointsVisible: layer.pointsVisible,
+            pointOrientation: layer.pointOrientation || "top",
+            drawCircle: layer.drawCircle !== false,
+            drawPolygon: !!layer.drawPolygon,
+          };
+
+          populateEditModal();
+          showOverlay(editOverlay, true);
+          editName.focus();
+        }
+
+        function populateEditModal() {
+          const e = state.editingLayer;
+          if (!e) return;
+          editName.value = e.name;
+          editRadius.value = e.radius;
+          editPointCount.value = e.pointCount;
+          editShowPoints.checked = !!e.pointsVisible;
+          editDrawCircle.checked = !!e.drawCircle;
+          editDrawPoly.checked = !!e.drawPolygon;
+          editOrient.value = e.pointOrientation;
+        }
+
+        function saveEditLayerFromModal() {
+          const e = state.editingLayer;
+          if (!e) return;
+
+          const radius = Number(editRadius.value);
+          const pointCount = Number(editPointCount.value);
+
+          if (!radius || radius <= 0) return;
+          if (!pointCount || pointCount < 1) return;
+
+          const cleanedName = (editName.value || "").trim();
+
+          state.layers = state.layers.map((l) => {
+            if (l.id !== e.id) return l;
+            return {
+              ...l,
+              name: cleanedName || l.name,
+              radius,
+              pointCount,
+              pointsVisible: !!editShowPoints.checked,
+              pointOrientation: editOrient.value,
+              drawCircle: !!editDrawCircle.checked,
+              drawPolygon: !!editDrawPoly.checked,
+            };
+          });
+
+          showOverlay(editOverlay, false);
+          render();
+        }
+
+        function duplicateLayer(layerId) {
+          const layer = state.layers.find((l) => l.id === layerId);
+          if (!layer) return;
+
+          const newId = nextId();
+          const duplicated = { ...layer, id: newId, name: `${layer.name} copy` };
+          state.layers = [...state.layers, duplicated];
+          state.selectedLayerId = newId;
+          render();
+        }
+
+        function generateRandomComposition() {
+          const targetLayerCount = 4 + Math.floor(Math.random() * 7); // 4–10
+
+          const baseRadius = 80 + Math.random() * 80; // 80–160
+          const basePoints = randomChoice([3, 4, 5, 6, 8, 12]);
+
+          const newLayers = [];
+
+          newLayers.push({
+            id: 1,
+            name: `Base ${basePoints}-gon`,
+            radius: Math.round(baseRadius),
+            pointCount: basePoints,
+            parentLayerId: null,
+            pointsVisible: true,
+            pointOrientation: "top",
+            drawCircle: true,
+            drawPolygon: Math.random() < 0.4,
+          });
+
+          const nameSeeds = ["Ring", "Star", "Flower", "Orbit", "Petal", "Ray"];
+
+          for (let i = 2; i <= targetLayerCount; i++) {
+            const parent = randomChoice(newLayers);
+
+            const radiusScales = [1 / PHI, 1 / (PHI * PHI), 1, PHI];
+            const scale = randomChoice(radiusScales);
+            let radius = parent.radius * scale;
+            if (Math.random() < 0.25) radius = parent.radius;
+            radius = Math.max(8, radius);
+
+            const candidatePointCounts = [
+              parent.pointCount,
+              parent.pointCount * 2,
+              parent.pointCount + randomChoice([-1, 0, 1, 2]),
+              randomChoice([3, 4, 5, 6, 8, 10, 12]),
+            ];
+            let pointCount = Math.round(randomChoice(candidatePointCounts));
+            pointCount = clamp(pointCount, 2, 42);
+
+            const orientation = randomChoice(["top", "bottom", "centered", "outward", "right", "left"]);
+
+            const drawCircle = Math.random() < 0.85;
+            const drawPolygon = Math.random() < 0.8;
+            const pointsVisible = Math.random() < 0.9;
+
+            const candidateLayer = {
+              id: i,
+              name: `${randomChoice(nameSeeds)} ${i - 1}`,
+              radius: Math.round(radius),
+              pointCount,
+              parentLayerId: parent.id,
+              pointsVisible,
+              pointOrientation: orientation,
+              drawCircle,
+              drawPolygon,
+            };
+
+            const candidateLayers = [...newLayers, candidateLayer];
+            const estimatedItems = estimateItemCount(candidateLayers);
+
+            if (estimatedItems > MAX_ITEMS) break;
+            newLayers.push(candidateLayer);
+          }
+
+          state.layers = newLayers;
+          state.selectedLayerId = newLayers[newLayers.length - 1].id;
+          render();
+        }
+
+        function showOverlay(overlayEl, show) {
+          overlayEl.classList.toggle("show", !!show);
+          overlayEl.setAttribute("aria-hidden", show ? "false" : "true");
+        }
+
+        function openPreview() {
+          // make sure geometry is up to date
+          computeGeometry();
+          renderPreview();
+          showOverlay(previewOverlay, true);
+        }
+
+        function closePreview() {
+          showOverlay(previewOverlay, false);
+        }
+
+        // ---- events
+        btnNew.addEventListener("click", openNewLayerModal);
+        btnRandom.addEventListener("click", generateRandomComposition);
+        btnPreview.addEventListener("click", openPreview);
+
+        // modal close click-on-backdrop
+        newOverlay.addEventListener("click", (e) => { if (e.target === newOverlay) showOverlay(newOverlay, false); });
+        editOverlay.addEventListener("click", (e) => { if (e.target === editOverlay) showOverlay(editOverlay, false); });
+
+        newClose.addEventListener("click", () => showOverlay(newOverlay, false));
+        newCancel.addEventListener("click", () => showOverlay(newOverlay, false));
+        newSave.addEventListener("click", addLayerFromModal);
+
+        editClose.addEventListener("click", () => showOverlay(editOverlay, false));
+        editCancel.addEventListener("click", () => showOverlay(editOverlay, false));
+        editSave.addEventListener("click", saveEditLayerFromModal);
+
+        // live-update new modal buffer (optional but nice)
+        [
+          ["input", newName, () => state.newLayer && (state.newLayer.name = newName.value)],
+          ["input", newRadius, () => state.newLayer && (state.newLayer.radius = Number(newRadius.value))],
+          ["input", newPointCount, () => state.newLayer && (state.newLayer.pointCount = Number(newPointCount.value))],
+          ["change", newAttach, () => state.newLayer && (state.newLayer.parentLayerId = newAttach.value === "center" ? null : Number(newAttach.value))],
+          ["change", newShowPoints, () => state.newLayer && (state.newLayer.pointsVisible = !!newShowPoints.checked)],
+          ["change", newDrawCircle, () => state.newLayer && (state.newLayer.drawCircle = !!newDrawCircle.checked)],
+          ["change", newDrawPoly, () => state.newLayer && (state.newLayer.drawPolygon = !!newDrawPoly.checked)],
+          ["change", newOrient, () => state.newLayer && (state.newLayer.pointOrientation = newOrient.value)],
+        ].forEach(([evt, el, fn]) => el.addEventListener(evt, fn));
+
+        // layer list interactions (select/copy/edit) via delegation
+        layersList.addEventListener("click", (e) => {
+          const btn = e.target.closest("button");
+          if (btn && btn.dataset.action) {
+            e.stopPropagation();
+            const id = Number(btn.dataset.layerId);
+            if (btn.dataset.action === "copy") duplicateLayer(id);
+            if (btn.dataset.action === "edit") startEditLayer(id);
+            return;
+          }
+          const row = e.target.closest(".row");
+          if (!row) return;
+          state.selectedLayerId = Number(row.dataset.layerId);
+          render();
+        });
+
+        layersList.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          const row = e.target.closest(".row");
+          if (!row) return;
+          e.preventDefault();
+          state.selectedLayerId = Number(row.dataset.layerId);
+          render();
+        });
+
+        // canvas click -> select closest layer point
+        svg.addEventListener("click", (e) => {
+          const { pickPoints } = state.geometry;
+          if (!pickPoints || pickPoints.length === 0) return;
+
+          const pt = svg.createSVGPoint();
+          pt.x = e.clientX;
+          pt.y = e.clientY;
+
+          const ctm = svg.getScreenCTM();
+          if (!ctm) return;
+
+          const local = pt.matrixTransform(ctm.inverse());
+          const clickX = local.x;
+          const clickY = local.y;
+
+          let closestLayerId = null;
+          let closestDistSq = Infinity;
+
+          for (const p of pickPoints) {
+            const dx = p.x - clickX;
+            const dy = p.y - clickY;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < closestDistSq) {
+              closestDistSq = d2;
+              closestLayerId = p.layerId;
+            }
+          }
+
+          if (closestLayerId != null) {
+            state.selectedLayerId = closestLayerId;
+            render();
+          }
+        });
+
+        // preview click to close
+        previewOverlay.addEventListener("click", closePreview);
+
+        // ESC closes modals/preview
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape") return;
+          showOverlay(newOverlay, false);
+          showOverlay(editOverlay, false);
+          closePreview();
+        });
+
+        // initial render
+        render();
+      })();
+    </script>
+  </body>
+</html>
+```
