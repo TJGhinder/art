@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Super-Simple Hue Flocks</title>
+<style>
+  html, body { margin:0; height:100%; background:#05070a; overflow:hidden; }
+  canvas { position:fixed; inset:0; display:block; width:100%; height:100%; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  // ===== minimal knobs (hard-coded) =====
+  const NUM_AGENTS = 15000;             // "a ton of little guys"
+  const NEIGHBOR_RADIUS = 10;           // px (for neighborhood queries)
+  const CELL_SIZE = NEIGHBOR_RADIUS;    // grid cell for cheap neighborhood
+  const SPEED = 2;                    // px/frame
+  const ATTRACT_K = 0.26;              // springy pull toward same-color centroid after bonding
+  const BROWNIAN = 0.25;                // base wander amplitude
+  const TURN_MIN = 0.001, TURN_MAX = 0.1; // per-frame angle jitter scales (each agent differs)
+
+  // New: attraction color tolerance ±10 on 0..255 (wrap-around)
+  const COLOR_TOL = 15;                 // inclusive
+
+  // New: overlap avoidance (short-range separation)
+  const SEP_RADIUS = 5;                 // px, keep smaller than NEIGHBOR_RADIUS
+  const SEP_R2 = SEP_RADIUS * SEP_RADIUS;
+  const SEP_K = 0.55;                   // strength of separation steering
+  const SEP_POS_CORRECT = 0.35;         // tiny immediate push to resolve tight overlaps
+
+  // ===== helpers =====
+  const rand = (a=0,b=1) => a + Math.random()*(b-a);
+  const clamp = (x,a,b) => Math.max(a, Math.min(b,x));
+  const TAU = Math.PI*2;
+
+  function hsl(h, s=1, l=0.5){
+    // h in [0,1]
+    const hue2rgb=(p,q,t)=>{ if(t<0) t+=1; if(t>1) t-=1; if(t<1/6) return p + (q-p)*6*t; if(t<1/2) return q; if(t<2/3) return p + (q-p)*(2/3 - t)*6; return p; };
+    let r,g,b; if(s===0){ r=g=b=l; } else { const q=l<0.5?l*(1+s):l+s-l*s; const p=2*l-q; r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3); }
+    return [(r*255)|0,(g*255)|0,(b*255)|0];
+  }
+
+  function colorNear(a,b,tol=COLOR_TOL){
+    let d = Math.abs(a-b);
+    if (d > 128) d = 256 - d; // wrap-around on 0..255 ring
+    return d <= tol;
+  }
+
+  // ===== resize / DPR =====
+  let W=0,H=0,DPR=1, COLS=0, ROWS=0;
+  function resize(){
+    DPR = Math.min(2, window.devicePixelRatio||1);
+    W = Math.floor(innerWidth);
+    H = Math.floor(innerHeight);
+    canvas.width = W*DPR; canvas.height = H*DPR;
+    canvas.style.width = W+'px'; canvas.style.height = H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    COLS = Math.max(1, Math.ceil(W / CELL_SIZE));
+    ROWS = Math.max(1, Math.ceil(H / CELL_SIZE));
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ===== agents =====
+  const agents = new Array(NUM_AGENTS).fill(0).map(() => {
+    const color = (Math.random()*256)|0; // 0..255 at birth
+    return {
+      x: Math.random()*W,
+      y: Math.random()*H,
+      a: rand(0,TAU),                 // heading angle
+      turn: rand(TURN_MIN, TURN_MAX), // preferred direction-change rate
+      color,                          // discrete class (0..255)
+      bonded: false                   // flips to true once we find our (near) color
+    };
+  });
+
+  // precompute fill styles by color index (0..255)
+  const fills = new Array(256).fill(0).map((_,i) => {
+    const [r,g,b] = hsl(i/255, 1, 0.5);
+    return `rgb(${r},${g},${b})`;
+  });
+
+  // ===== spatial hash grid =====
+  let grid = [];
+  function clearGrid(){
+    grid = new Array(COLS*ROWS);
+    for (let i=0;i<grid.length;i++) grid[i] = [];
+  }
+  function cellIndex(x,y){
+    const cx = clamp((x/CELL_SIZE)|0, 0, COLS-1);
+    const cy = clamp((y/CELL_SIZE)|0, 0, ROWS-1);
+    return cy*COLS + cx;
+  }
+
+  // ===== simulation step =====
+  const R2 = NEIGHBOR_RADIUS*NEIGHBOR_RADIUS;
+  function step(){
+    clearGrid();
+    for (let i=0;i<agents.length;i++) {
+      const a = agents[i];
+      grid[cellIndex(a.x,a.y)].push(i);
+    }
+
+    for (let i=0;i<agents.length;i++){
+      const me = agents[i];
+
+      // wander: independent Brownian turning, each with its own scale
+      me.a += (Math.random()*2-1) * me.turn * BROWNIAN;
+
+      // look locally for neighbors
+      const cx = (me.x/CELL_SIZE)|0;
+      const cy = (me.y/CELL_SIZE)|0;
+      let sx=0, sy=0, sc=0; // centroid accumulators for near-color
+      let sepX=0, sepY=0, sepW=0; // separation accumulators
+
+      for (let oy=-1; oy<=1; oy++){
+        const y = cy+oy; if (y<0||y>=ROWS) continue;
+        for (let ox=-1; ox<=1; ox++){
+          const x = cx+ox; if (x<0||x>=COLS) continue;
+          const bucket = grid[y*COLS + x];
+          for (let k=0;k<bucket.length;k++){
+            const j = bucket[k]; if (j===i) continue;
+            const other = agents[j];
+            const dx = other.x - me.x;
+            const dy = other.y - me.y;
+            const d2 = dx*dx + dy*dy;
+            if (d2 > R2 && d2 > SEP_R2) continue;
+
+            // attraction to similar hues within radius (±10 w/ wrap)
+            if (d2 <= R2 && colorNear(other.color, me.color)){
+              sx += other.x; sy += other.y; sc++;
+            }
+
+            // short-range separation (avoid overlap), independent of color
+            if (d2 <= SEP_R2){
+              const d = Math.sqrt(d2) || 1e-6;
+              const w = (SEP_RADIUS - d) / SEP_RADIUS; // stronger if closer
+              sepX -= (dx / d) * w;
+              sepY -= (dy / d) * w;
+              sepW += w;
+            }
+          }
+        }
+      }
+
+      // steering influences
+      let ax = 0, ay = 0;
+
+      // gentle pull toward same-color (within tolerance) centroid
+      if (sc>0){
+        me.bonded = true; // met our kind at least once
+        const cxm = sx/sc, cym = sy/sc;
+        const dx = cxm - me.x;
+        const dy = cym - me.y;
+        const dist = Math.hypot(dx,dy) || 1;
+        const pull = ATTRACT_K * dist; // springier with distance
+        ax += (dx/dist) * pull;
+        ay += (dy/dist) * pull;
+      }
+
+      // push away from close neighbors (overlap avoidance)
+      if (sepW > 0){
+        const m = Math.hypot(sepX, sepY) || 1;
+        ax += (sepX / m) * SEP_K;
+        ay += (sepY / m) * SEP_K;
+      }
+
+      // steer heading a bit toward the net (attraction + separation)
+      if (ax !== 0 || ay !== 0){
+        const desired = Math.atan2((Math.sin(me.a)*SPEED + ay), (Math.cos(me.a)*SPEED + ax));
+        const diff = ((desired - me.a + Math.PI) % (2*Math.PI)) - Math.PI; // wrap to [-pi,pi]
+        me.a += diff * 0.15; // gentle turning
+      }
+
+      // integrate position with constant-ish speed
+      const vx = Math.cos(me.a) * SPEED;
+      const vy = Math.sin(me.a) * SPEED;
+      me.x += vx; me.y += vy;
+
+      // tiny immediate post-move push to resolve very tight overlaps
+      if (sepW > 0){
+        const m = Math.hypot(sepX, sepY) || 1;
+        me.x += (sepX / m) * SEP_POS_CORRECT;
+        me.y += (sepY / m) * SEP_POS_CORRECT;
+      }
+
+      // torus wrapping
+      if (me.x < 0) me.x += W; else if (me.x >= W) me.x -= W;
+      if (me.y < 0) me.y += H; else if (me.y >= H) me.y -= H;
+    }
+  }
+
+  // ===== draw =====
+  function draw(){
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0,0,W,H);
+    for (let i=0;i<agents.length;i++){
+      const a = agents[i];
+      ctx.fillStyle = fills[a.color];
+      // slightly bigger dot if bonded, for a hint of feedback, but still minimal
+      const s = a.bonded ? 2.2 : 1.8;
+      ctx.fillRect(a.x|0, a.y|0, s, s);
+    }
+  }
+
+  // ===== main loop =====
+  function loop(){ step(); draw(); requestAnimationFrame(loop); }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
+
